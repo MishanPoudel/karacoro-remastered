@@ -9,18 +9,17 @@ import { Mic, MicOff, Volume2, VolumeX, Users, Wifi, WifiOff, AlertTriangle, Set
 import { toast } from 'sonner';
 import { envLog } from '@/lib/config';
 
-// Define VoiceParticipant interface locally to avoid import issues
 export interface VoiceParticipant {
   id: string;
   isMuted: boolean;
   isSpeaking?: boolean;
   connectionQuality?: 'good' | 'medium' | 'poor';
   volume?: number;
-  userVolume?: number; // Individual volume control
+  userVolume?: number;
 }
 
 export interface VoiceChatProps {
-  socket: any; // Use any to avoid Socket.io import issues
+  socket: any;
   roomId: string;
   userId: string;
   onConnectionStatusChange?: (isConnected: boolean) => void;
@@ -28,7 +27,6 @@ export interface VoiceChatProps {
   onMuteStatusChange?: (isMuted: boolean) => void;
 }
 
-// Free STUN servers for NAT traversal
 const ICE_SERVERS = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
@@ -44,7 +42,6 @@ export function VoiceChat({
   onVoiceParticipantsChange,
   onMuteStatusChange
 }: VoiceChatProps) {
-  // Core state
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
@@ -55,21 +52,17 @@ export function VoiceChat({
   const [hasPermission, setHasPermission] = useState(false);
   const [isDemoMode, setIsDemoMode] = useState(false);
 
-  // WebRTC state
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const socketRef = useRef<any>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const voiceActivityTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const isInitializedRef = useRef(false);
 
-  // Update socket ref when socket changes
   useEffect(() => {
     socketRef.current = socket;
   }, [socket]);
 
-  // Check if we're in demo mode
   useEffect(() => {
     const checkDemoMode = () => {
       if (typeof window !== 'undefined') {
@@ -83,11 +76,9 @@ export function VoiceChat({
     checkDemoMode();
   }, []);
 
-  // Get current socket (either from prop or from global state)
   const getCurrentSocket = useCallback(() => {
     if (socketRef.current) return socketRef.current;
     
-    // Try to get socket from global state if available
     if (typeof window !== 'undefined' && (window as any).__KARAOKE_SOCKET__) {
       return (window as any).__KARAOKE_SOCKET__;
     }
@@ -95,7 +86,6 @@ export function VoiceChat({
     return null;
   }, []);
 
-  // Check microphone permission
   const checkMicrophonePermission = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -106,11 +96,9 @@ export function VoiceChat({
     }
   };
 
-  // Request microphone access (or simulate in demo mode)
   const requestMicrophoneAccess = async (): Promise<MediaStream> => {
     if (isDemoMode) {
-      // Create a fake audio stream for demo mode
-      const audioContext = new AudioContext();
+      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const oscillator = audioContext.createOscillator();
       const destination = audioContext.createMediaStreamDestination();
       oscillator.connect(destination);
@@ -131,7 +119,6 @@ export function VoiceChat({
         video: false
       });
 
-      // Start muted
       const audioTrack = stream.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = false;
@@ -145,16 +132,14 @@ export function VoiceChat({
     }
   };
 
-  // Setup audio analysis for voice activity detection
   const setupAudioAnalysis = (stream: MediaStream) => {
     if (isDemoMode) {
-      // Simulate voice activity in demo mode
       startDemoVoiceActivity();
       return;
     }
 
     try {
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       const source = audioContextRef.current.createMediaStreamSource(stream);
       analyserRef.current = audioContextRef.current.createAnalyser();
       
@@ -162,24 +147,19 @@ export function VoiceChat({
       analyserRef.current.smoothingTimeConstant = 0.8;
       
       source.connect(analyserRef.current);
-
-      // Start voice activity detection
       startVoiceActivityDetection();
     } catch (error) {
       envLog.error('Failed to setup audio analysis:', error);
     }
   };
 
-  // Demo voice activity simulation
   const startDemoVoiceActivity = () => {
     voiceActivityTimerRef.current = setInterval(() => {
       if (isMuted) return;
 
-      // Simulate random voice activity
       const isSpeaking = Math.random() > 0.8;
       const volume = isSpeaking ? Math.random() * 50 + 20 : 0;
 
-      // Update local participant and notify others
       const currentSocket = getCurrentSocket();
       if (currentSocket) {
         currentSocket.emit('voice_activity', {
@@ -190,7 +170,6 @@ export function VoiceChat({
         });
       }
 
-      // Update local state
       setParticipants(prev => prev.map(p => 
         p.id === userId 
           ? { ...p, isSpeaking, volume }
@@ -199,7 +178,6 @@ export function VoiceChat({
     }, 500);
   };
 
-  // Voice activity detection
   const startVoiceActivityDetection = () => {
     if (!analyserRef.current) return;
 
@@ -212,11 +190,9 @@ export function VoiceChat({
 
       analyserRef.current.getByteFrequencyData(dataArray);
       
-      // Calculate average volume
       const average = dataArray.reduce((sum, value) => sum + value, 0) / bufferLength;
       const isSpeaking = average > voiceActivityThreshold;
 
-      // Update local participant and notify others
       const currentSocket = getCurrentSocket();
       if (currentSocket) {
         currentSocket.emit('voice_activity', {
@@ -227,7 +203,6 @@ export function VoiceChat({
         });
       }
 
-      // Update local state
       setParticipants(prev => prev.map(p => 
         p.id === userId 
           ? { ...p, isSpeaking, volume: average }
@@ -238,10 +213,8 @@ export function VoiceChat({
     voiceActivityTimerRef.current = setInterval(detectVoiceActivity, 100);
   };
 
-  // Create peer connection (or simulate in demo mode)
   const createPeerConnection = async (peerId: string, isInitiator: boolean): Promise<RTCPeerConnection | null> => {
     if (isDemoMode) {
-      // Return null for demo mode - no real peer connections
       return null;
     }
 
@@ -250,20 +223,19 @@ export function VoiceChat({
       iceCandidatePoolSize: 10
     });
 
-    // Add local stream
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
-        pc.addTrack(track, localStreamRef.current!);
+        if (localStreamRef.current) {
+          pc.addTrack(track, localStreamRef.current);
+        }
       });
     }
 
-    // Handle remote stream
     pc.ontrack = (event) => {
       const [remoteStream] = event.streams;
       handleRemoteStream(peerId, remoteStream);
     };
 
-    // Handle ICE candidates
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         const currentSocket = getCurrentSocket();
@@ -276,7 +248,6 @@ export function VoiceChat({
       }
     };
 
-    // Monitor connection state
     pc.onconnectionstatechange = () => {
       envLog.debug(`Connection state with ${peerId}:`, pc.connectionState);
       updateConnectionQuality(peerId, pc);
@@ -284,7 +255,6 @@ export function VoiceChat({
 
     peerConnectionsRef.current.set(peerId, pc);
 
-    // If we're the initiator, create and send offer
     if (isInitiator) {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
@@ -302,9 +272,7 @@ export function VoiceChat({
     return pc;
   };
 
-  // Handle remote stream
   const handleRemoteStream = (peerId: string, stream: MediaStream) => {
-    // Create or update audio element for this peer
     let audioElement = document.querySelector(`audio[data-participant="${peerId}"]`) as HTMLAudioElement;
     
     if (!audioElement) {
@@ -313,7 +281,6 @@ export function VoiceChat({
       audioElement.autoplay = true;
       audioElement.style.display = 'none';
       
-      // Set initial volume based on participant's individual volume or master volume
       const participant = participants.find(p => p.id === peerId);
       const volume = participant?.userVolume ?? masterVolume;
       audioElement.volume = volume / 100;
@@ -325,7 +292,6 @@ export function VoiceChat({
     envLog.info(`Remote stream connected for ${peerId}`);
   };
 
-  // Update connection quality
   const updateConnectionQuality = (peerId: string, pc: RTCPeerConnection) => {
     let quality: 'good' | 'medium' | 'poor' = 'good';
     
@@ -349,7 +315,6 @@ export function VoiceChat({
     ));
   };
 
-  // Connect to voice chat
   const connectToVoiceChat = async () => {
     if (isConnected || isConnecting) return;
 
@@ -366,14 +331,11 @@ export function VoiceChat({
         });
       }
       
-      // Request microphone access
       const stream = await requestMicrophoneAccess();
       localStreamRef.current = stream;
       
-      // Setup audio analysis
       setupAudioAnalysis(stream);
       
-      // Add self as participant
       setParticipants(prev => {
         if (prev.find(p => p.id === userId)) return prev;
         return [...prev, {
@@ -386,7 +348,6 @@ export function VoiceChat({
         }];
       });
 
-      // Add some demo participants if in demo mode
       if (isDemoMode) {
         setTimeout(() => {
           setParticipants(prev => [
@@ -411,7 +372,6 @@ export function VoiceChat({
         }, 1000);
       }
       
-      // Join voice room
       const currentSocket = getCurrentSocket();
       if (currentSocket) {
         currentSocket.emit('voice_join', {
@@ -438,35 +398,27 @@ export function VoiceChat({
     }
   };
 
-  // Disconnect from voice chat
   const disconnectFromVoiceChat = async () => {
     if (!isConnected) return;
 
     try {
       envLog.info('Disconnecting from voice chat...');
       
-      // Stop voice activity detection
       if (voiceActivityTimerRef.current) {
         clearInterval(voiceActivityTimerRef.current);
         voiceActivityTimerRef.current = null;
       }
 
-      // Close all peer connections safely
-      for (const [peerId, pc] of Array.from(peerConnectionsRef.current.entries())) {
+      const peerConnections = Array.from(peerConnectionsRef.current.entries());
+      for (const [peerId, pc] of peerConnections) {
         try {
           pc.close();
-          envLog.info(`Successfully closed peer connection for ${peerId}`);
         } catch (error) {
           envLog.warn(`Error closing peer connection for ${peerId}:`, error);
         }
       }
-
-      // Clear the peer connections map
       peerConnectionsRef.current.clear();
-      envLog.info("Cleared all peer connections.");
 
-
-      // Stop local stream
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => {
           try {
@@ -478,7 +430,6 @@ export function VoiceChat({
         localStreamRef.current = null;
       }
 
-      // Close audio context
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         try {
           await audioContextRef.current.close();
@@ -489,11 +440,9 @@ export function VoiceChat({
         analyserRef.current = null;
       }
 
-      // Remove all audio elements
       const audioElements = document.querySelectorAll('audio[data-participant]');
       audioElements.forEach(element => element.remove());
 
-      // Leave voice room
       const currentSocket = getCurrentSocket();
       if (currentSocket) {
         currentSocket.emit('voice_leave', {
@@ -518,7 +467,6 @@ export function VoiceChat({
     }
   };
 
-  // Toggle mute/unmute
   const toggleMute = () => {
     if (!localStreamRef.current || !isConnected) {
       toast.warning('Not connected to voice chat');
@@ -529,21 +477,18 @@ export function VoiceChat({
     setIsMuted(newMutedState);
     
     if (!isDemoMode) {
-      // Mute/unmute local audio track
       const audioTrack = localStreamRef.current.getAudioTracks()[0];
       if (audioTrack) {
         audioTrack.enabled = !newMutedState;
       }
     }
 
-    // Update local participant
     setParticipants(prev => prev.map(p => 
       p.id === userId 
         ? { ...p, isMuted: newMutedState, isSpeaking: false }
         : p
     ));
 
-    // Notify other participants
     const currentSocket = getCurrentSocket();
     if (currentSocket) {
       currentSocket.emit('voice_mute_status', {
@@ -558,10 +503,8 @@ export function VoiceChat({
     envLog.info(`Microphone ${newMutedState ? 'muted' : 'unmuted'}`);
   };
 
-  // Set volume for a specific participant
   const setParticipantVolume = (participantId: string, volume: number) => {
     if (isDemoMode) {
-      // Just update state in demo mode
       setParticipants(prev => prev.map(p => 
         p.id === participantId 
           ? { ...p, userVolume: volume }
@@ -575,7 +518,6 @@ export function VoiceChat({
       (audio as HTMLAudioElement).volume = Math.max(0, Math.min(1, volume / 100));
     });
 
-    // Update participant's individual volume
     setParticipants(prev => prev.map(p => 
       p.id === participantId 
         ? { ...p, userVolume: volume }
@@ -583,12 +525,10 @@ export function VoiceChat({
     ));
   };
 
-  // Handle master volume changes
   const handleMasterVolumeChange = (newVolume: number[]) => {
     const volume = newVolume[0];
     setMasterVolume(volume);
     
-    // Apply to all participants who don't have individual volume set
     participants.forEach(participant => {
       if (participant.id !== userId && participant.userVolume === undefined) {
         setParticipantVolume(participant.id, volume);
@@ -596,7 +536,6 @@ export function VoiceChat({
     });
   };
 
-  // Initialize
   useEffect(() => {
     if (roomId && userId) {
       checkMicrophonePermission();
@@ -607,12 +546,10 @@ export function VoiceChat({
     };
   }, [roomId, userId]);
 
-  // Update participants callback
   useEffect(() => {
     onVoiceParticipantsChange?.(participants);
   }, [participants, onVoiceParticipantsChange]);
 
-  // Get connection quality color
   const getConnectionQualityColor = (quality?: 'good' | 'medium' | 'poor') => {
     switch (quality) {
       case 'good': return 'text-green-400';
@@ -622,7 +559,6 @@ export function VoiceChat({
     }
   };
 
-  // Get speaking indicator
   const getSpeakingIndicator = (participant: VoiceParticipant) => {
     if (participant.isSpeaking && !participant.isMuted) {
       return (
@@ -639,7 +575,6 @@ export function VoiceChat({
   return (
     <Card className="p-4 bg-gray-800/50 border-blue-500/30">
       <div className="space-y-4">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Volume2 className="w-5 h-5 text-blue-400" />
@@ -681,7 +616,6 @@ export function VoiceChat({
           </div>
         </div>
 
-        {/* Permission Check */}
         {!hasPermission && !isDemoMode && (
           <div className="bg-yellow-900/30 border border-yellow-500/30 rounded-lg p-3">
             <p className="text-yellow-300 text-sm">
@@ -690,7 +624,6 @@ export function VoiceChat({
           </div>
         )}
 
-        {/* Error Message */}
         {error && (
           <div className="bg-red-900/30 border border-red-500/30 rounded-lg p-3">
             <p className="text-red-300 text-sm">{error}</p>
@@ -707,7 +640,6 @@ export function VoiceChat({
           </div>
         )}
 
-        {/* Connection Controls */}
         {!isConnected ? (
           <div className="text-center py-4">
             <p className="text-gray-400 mb-4">
@@ -740,7 +672,6 @@ export function VoiceChat({
           </div>
         ) : (
           <>
-            {/* Voice Controls */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Button
@@ -771,7 +702,6 @@ export function VoiceChat({
               </Button>
             </div>
 
-            {/* Settings Panel */}
             {showSettings && (
               <div className="bg-gray-700/50 rounded-lg p-4 space-y-4">
                 <div>
@@ -794,7 +724,6 @@ export function VoiceChat({
               </div>
             )}
 
-            {/* Participants List */}
             {participants.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-sm font-medium text-gray-300">
@@ -832,7 +761,6 @@ export function VoiceChat({
                       <div className="flex items-center gap-2">
                         {getSpeakingIndicator(participant)}
                         
-                        {/* Individual volume control for other participants */}
                         {participant.id !== userId && (
                           <div className="flex items-center gap-1">
                             <VolumeX className="w-3 h-3 text-gray-400" />
@@ -857,7 +785,6 @@ export function VoiceChat({
               </div>
             )}
 
-            {/* Voice Chat Info */}
             <div className="text-xs text-gray-400 text-center pt-2 border-t border-gray-700">
               {isDemoMode 
                 ? 'Demo mode - simulated voice communication'

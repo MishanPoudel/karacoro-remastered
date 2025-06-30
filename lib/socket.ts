@@ -1,186 +1,350 @@
-import { io, Socket } from 'socket.io-client';
-import MockSocketManager, { MockSocket } from './mock-socket';
+import { useEffect, useRef, useState } from 'react';
+import { Socket } from 'socket.io-client';
+import { CONFIG, envLog } from '@/lib/config';
+import { trackKaraokeEvent, trackError } from '@/lib/analytics';
+import { MockSocket } from '@/lib/mock-socket';
 import { toast } from 'sonner';
 
-class SocketManager {
-  private socket: Socket | MockSocket | null = null;
-  private static instance: SocketManager;
-  private isUsingMock: boolean = false;
-  private connectionAttempts: number = 0;
-  private maxRetries: number = 2; // Reduced retries for faster fallback
-  private connectionTimeout: number = 3000; // Reduced timeout
-
-  private constructor() {}
-
-  static getInstance(): SocketManager {
-    if (!SocketManager.instance) {
-      SocketManager.instance = new SocketManager();
-    }
-    return SocketManager.instance;
-  }
-
-  private getSocketUrl(): string {
-    if (typeof window === 'undefined') {
-      return 'http://localhost:3001';
-    }
-
-    const currentUrl = window.location;
-    
-    // Use the same protocol as the frontend (http/https)
-    const protocol = currentUrl.protocol === 'https:' ? 'https:' : 'http:';
-    
-    // Check if we're in a webcontainer environment
-    if (currentUrl.hostname.includes('webcontainer-api.io')) {
-      // Replace the port in the hostname to point to 3001
-      const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
-      return `${protocol}//${socketHostname}`;
-    }
-    
-    // Local development
-    if (currentUrl.hostname === 'localhost') {
-      return `${protocol}//localhost:3001`;
-    }
-    
-    // Fallback
-    return `${protocol}//${currentUrl.hostname}:3001`;
-  }
-
-  async connect(): Promise<Socket | MockSocket | null> {
-    if (this.socket && (this.socket as Socket).connected) {
-      return this.socket;
-    }
-
-    this.connectionAttempts++;
-
-    try {
-      const socketUrl = this.getSocketUrl();
-      console.log(`Attempting to connect to socket server (attempt ${this.connectionAttempts}/${this.maxRetries}):`, socketUrl);
-      
-      // Try to connect to real socket server
-      const realSocket = io(socketUrl, {
-        transports: ['websocket', 'polling'],
-        timeout: this.connectionTimeout,
-        forceNew: true,
-        reconnection: false, // Disable auto-reconnection to handle manually
-        autoConnect: true
-      });
-
-      // Wait for connection or timeout
-      const connectionResult = await Promise.race([
-        new Promise<Socket>((resolve, reject) => {
-          const connectHandler = () => {
-            console.log('✅ Connected to real socket server');
-            realSocket.off('connect', connectHandler);
-            realSocket.off('connect_error', errorHandler);
-            realSocket.off('disconnect', disconnectHandler);
-            this.isUsingMock = false;
-            this.connectionAttempts = 0;
-            resolve(realSocket);
-          };
-
-          const errorHandler = (error: any) => {
-            console.warn('❌ Socket connection error:', error);
-            realSocket.off('connect', connectHandler);
-            realSocket.off('connect_error', errorHandler);
-            realSocket.off('disconnect', disconnectHandler);
-            reject(error);
-          };
-
-          const disconnectHandler = (reason: string) => {
-            console.warn('❌ Socket disconnected during connection:', reason);
-            if (reason === 'io server disconnect' || reason === 'io client disconnect') {
-              return;
-            }
-            realSocket.off('connect', connectHandler);
-            realSocket.off('connect_error', errorHandler);
-            realSocket.off('disconnect', disconnectHandler);
-            reject(new Error(`Socket disconnected: ${reason}`));
-          };
-
-          realSocket.on('connect', connectHandler);
-          realSocket.on('connect_error', errorHandler);
-          realSocket.on('disconnect', disconnectHandler);
-        }),
-        new Promise<null>((_, reject) => {
-          setTimeout(() => {
-            realSocket.disconnect();
-            reject(new Error('Socket connection timeout'));
-          }, this.connectionTimeout);
-        })
-      ]);
-
-      this.socket = connectionResult;
-      
-      // Store socket globally for voice chat access
-      if (typeof window !== 'undefined') {
-        (window as any).__KARAOKE_SOCKET__ = this.socket;
-      }
-
-      return this.socket;
-
-    } catch (error) {
-      console.warn(`❌ Failed to connect to socket server (attempt ${this.connectionAttempts}/${this.maxRetries}):`, error);
-      
-      // Retry if we haven't exceeded max attempts
-      if (this.connectionAttempts < this.maxRetries) {
-        console.log(`Retrying connection in 1 second...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.connect();
-      }
-
-      // Fall back to mock socket after all retries failed
-      console.log('All connection attempts failed, switching to demo mode');
-      const mockSocketManager = MockSocketManager.getInstance();
-      this.socket = mockSocketManager.createMockSocket();
-      this.isUsingMock = true;
-      this.connectionAttempts = 0;
-
-      // Store mock socket globally
-      if (typeof window !== 'undefined') {
-        (window as any).__KARAOKE_SOCKET__ = this.socket;
-      }
-
-      // Show demo mode notification
-      toast.info('🎭 Demo Mode Active', {
-        description: 'Server unavailable. Using demo mode with simulated features.',
-        duration: 4000,
-      });
-
-      return this.socket;
-    }
-  }
-
-  disconnect(): void {
-    if (this.socket) {
-      if (this.isUsingMock) {
-        const mockSocketManager = MockSocketManager.getInstance();
-        mockSocketManager.disconnect();
-      } else {
-        (this.socket as Socket).disconnect();
-      }
-      this.socket = null;
-      this.isUsingMock = false;
-      this.connectionAttempts = 0;
-      
-      if (typeof window !== 'undefined') {
-        delete (window as any).__KARAOKE_SOCKET__;
-      }
-    }
-  }
-
-  getSocket(): Socket | MockSocket | null {
-    return this.socket;
-  }
-
-  isInDemoMode(): boolean {
-    return this.isUsingMock;
-  }
-
-  isConnected(): boolean {
-    if (!this.socket) return false;
-    if (this.isUsingMock) return true;
-    return (this.socket as Socket).connected;
-  }
+export interface User {
+  username: string;
+  isHost: boolean;
+  socketId: string;
 }
 
-export default SocketManager;
+export interface QueueItem {
+  id: number;
+  videoId: string;
+  title: string;
+  duration: number;
+  thumbnail: string;
+  addedBy: string;
+  addedAt: Date;
+}
+
+export interface ChatMessage {
+  id: number;
+  username: string;
+  message: string;
+  timestamp: Date;
+  isHost: boolean;
+}
+
+export interface VideoState {
+  isPlaying: boolean;
+  currentTime: number;
+  lastUpdate: number;
+  action?: string;
+}
+
+export interface RoomState {
+  roomId: string;
+  username: string;
+  isHost: boolean;
+  users: User[];
+  queue: QueueItem[];
+  currentVideo: QueueItem | null;
+  videoState: VideoState;
+  chatHistory: ChatMessage[];
+  connected: boolean;
+  isDemoMode: boolean;
+}
+
+export const useSocket = () => {
+  const socketRef = useRef<Socket | MockSocket | null>(null);
+  const [roomState, setRoomState] = useState<RoomState>({
+    roomId: '',
+    username: '',
+    isHost: false,
+    users: [],
+    queue: [],
+    currentVideo: null,
+    videoState: { isPlaying: false, currentTime: 0, lastUpdate: 0 },
+    chatHistory: [],
+    connected: false,
+    isDemoMode: false
+  });
+
+  useEffect(() => {
+    const initializeSocket = async () => {
+      try {
+        envLog.info('Initializing socket connection');
+        
+        // Dynamic import to avoid SSR issues
+        const { default: SocketManager } = await import('@/lib/socket-manager');
+        const socketManager = SocketManager.getInstance();
+        
+        const socket = await socketManager.connect();
+        socketRef.current = socket;
+        
+        // Store socket globally for voice chat access
+        if (typeof window !== 'undefined') {
+          (window as any).__KARAOKE_SOCKET__ = socket;
+        }
+        
+        const isDemoMode = socketManager.isInDemoMode();
+        setRoomState(prev => ({ ...prev, isDemoMode }));
+        
+        if (isDemoMode) {
+          trackKaraokeEvent('socket_connected', { type: 'mock' });
+          setTimeout(() => {
+            toast.info('🎭 Demo Mode', {
+              description: 'You\'re using KaraCoro in demo mode. All features are simulated.',
+              duration: 3000,
+            });
+          }, 2000);
+        } else {
+          trackKaraokeEvent('socket_connected', { type: 'real' });
+        }
+
+        // Setup event listeners
+        setupSocketListeners(socket);
+        
+      } catch (error) {
+        envLog.error('Failed to initialize socket:', error);
+        trackError(error as Error, { context: 'socket_initialization' });
+      }
+    };
+
+    const setupSocketListeners = (socket: Socket | MockSocket) => {
+      // Connection events
+      socket.on('connect', () => {
+        envLog.info('Socket connected');
+        setRoomState(prev => ({ ...prev, connected: true }));
+        trackKaraokeEvent('socket_connection_established');
+      });
+
+      socket.on('disconnect', () => {
+        envLog.info('Socket disconnected');
+        setRoomState(prev => ({ ...prev, connected: false }));
+        trackKaraokeEvent('socket_disconnected');
+      });
+
+      // Room events
+      socket.on('room_joined', (data) => {
+        envLog.info('Joined room:', data);
+        setRoomState(prev => ({
+          ...prev,
+          roomId: data.roomId,
+          username: data.username,
+          isHost: data.isHost,
+          users: data.users,
+          queue: data.queue,
+          currentVideo: data.currentVideo,
+          videoState: data.videoState,
+          chatHistory: data.chatHistory
+        }));
+        
+        trackKaraokeEvent('room_joined', {
+          roomId: data.roomId,
+          isHost: data.isHost,
+          userCount: data.users.length,
+          isDemoMode: roomState.isDemoMode
+        });
+      });
+
+      socket.on('user_joined', (data) => {
+        envLog.info('User joined:', data);
+        setRoomState(prev => {
+          const userExists = prev.users.some(u => u.socketId === data.socketId);
+          if (userExists) return prev;
+          
+          return {
+            ...prev,
+            users: [...prev.users, data]
+          };
+        });
+        
+        trackKaraokeEvent('user_joined_room', { username: data.username });
+      });
+
+      socket.on('user_left', (data) => {
+        envLog.info('User left:', data);
+        setRoomState(prev => ({
+          ...prev,
+          users: prev.users.filter(user => user.username !== data.username)
+        }));
+        
+        trackKaraokeEvent('user_left_room', { username: data.username });
+      });
+
+      socket.on('host_changed', (data) => {
+        envLog.info('Host changed:', data);
+        setRoomState(prev => ({
+          ...prev,
+          users: prev.users.map(user => ({
+            ...user,
+            isHost: user.socketId === data.socketId
+          })),
+          isHost: prev.username === data.newHost
+        }));
+        
+        trackKaraokeEvent('host_changed', { newHost: data.newHost });
+      });
+
+      socket.on('username_changed', (data) => {
+        envLog.info('Username changed:', data);
+        setRoomState(prev => ({
+          ...prev,
+          users: prev.users.map(user => 
+            user.socketId === data.socketId 
+              ? { ...user, username: data.newUsername }
+              : user
+          ),
+          username: prev.username === data.oldUsername ? data.newUsername : prev.username
+        }));
+      });
+
+      // Chat events
+      socket.on('chat_message', (message) => {
+        envLog.debug('Chat message received:', message);
+        setRoomState(prev => {
+          const messageExists = prev.chatHistory.some(m => m.id === message.id);
+          if (messageExists) {
+            return prev;
+          }
+          return {
+            ...prev,
+            chatHistory: [...prev.chatHistory, message]
+          };
+        });
+      });
+
+      // Queue events
+      socket.on('queue_updated', (data) => {
+        envLog.debug('Queue updated:', data);
+        setRoomState(prev => ({
+          ...prev,
+          queue: data.queue
+        }));
+      });
+
+      // Video events
+      socket.on('video_changed', (data) => {
+        envLog.debug('Video changed:', data);
+        setRoomState(prev => ({
+          ...prev,
+          currentVideo: data.video,
+          queue: data.queue,
+          videoState: data.videoState
+        }));
+        
+        trackKaraokeEvent('video_changed', { 
+          videoTitle: data.video?.title,
+          queueLength: data.queue.length
+        });
+      });
+
+      socket.on('video_state_sync', (videoState) => {
+        envLog.debug('Video state sync:', videoState);
+        setRoomState(prev => ({
+          ...prev,
+          videoState: {
+            ...videoState,
+            lastUpdate: Date.now()
+          }
+        }));
+      });
+
+      socket.on('video_ended', (data) => {
+        envLog.debug('Video ended:', data);
+        setRoomState(prev => ({
+          ...prev,
+          currentVideo: null,
+          queue: data.queue,
+          videoState: data.videoState
+        }));
+        
+        trackKaraokeEvent('video_ended', { queueLength: data.queue.length });
+      });
+
+      // Error handling
+      socket.on('error', (error) => {
+        envLog.error('Socket error:', error);
+        trackError(new Error(error.message || 'Socket error'), { context: 'socket_event' });
+      });
+    };
+
+    initializeSocket();
+
+    return () => {
+      if (socketRef.current) {
+        if ('disconnect' in socketRef.current) {
+          socketRef.current.disconnect();
+        }
+        socketRef.current = null;
+        
+        if (typeof window !== 'undefined') {
+          delete (window as any).__KARAOKE_SOCKET__;
+        }
+      }
+    };
+  }, []);
+
+  const joinRoom = (roomId: string, username: string) => {
+    if (socketRef.current) {
+      envLog.info(`Joining room ${roomId} as ${username}`);
+      socketRef.current.emit('join_room', { roomId, username });
+    }
+  };
+
+  const changeUsername = (newUsername: string) => {
+    if (socketRef.current) {
+      envLog.info(`Changing username to ${newUsername}`);
+      socketRef.current.emit('change_username', { newUsername });
+    }
+  };
+
+  const sendChatMessage = (message: string) => {
+    if (socketRef.current) {
+      envLog.debug(`Sending chat message: ${message}`);
+      socketRef.current.emit('chat_message', { message });
+    }
+  };
+
+  const addToQueue = (videoUrl: string, title: string, duration: number, thumbnail: string) => {
+    if (socketRef.current) {
+      envLog.info(`Adding to queue: ${title}`);
+      socketRef.current.emit('add_to_queue', { videoUrl, title, duration, thumbnail });
+    }
+  };
+
+  const removeFromQueue = (videoId: number) => {
+    if (socketRef.current) {
+      envLog.info(`Removing from queue: ${videoId}`);
+      socketRef.current.emit('remove_from_queue', { videoId });
+    }
+  };
+
+  const updateVideoState = (isPlaying: boolean, currentTime: number, action?: string) => {
+    if (socketRef.current) {
+      envLog.debug(`Video state update: playing=${isPlaying}, time=${currentTime}`);
+      socketRef.current.emit('video_state_change', { isPlaying, currentTime, action });
+    }
+  };
+
+  const skipVideo = () => {
+    if (socketRef.current) {
+      envLog.info('Skipping video');
+      socketRef.current.emit('skip_video');
+    }
+  };
+
+  const videoEnded = () => {
+    if (socketRef.current) {
+      envLog.info('Video ended');
+      socketRef.current.emit('video_ended');
+    }
+  };
+
+  return {
+    roomState,
+    joinRoom,
+    changeUsername,
+    sendChatMessage,
+    addToQueue,
+    removeFromQueue,
+    updateVideoState,
+    skipVideo,
+    videoEnded
+  };
+};

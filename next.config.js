@@ -1,5 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  swcMinify: false,
   eslint: {
     ignoreDuringBuilds: true,
   },
@@ -9,6 +10,8 @@ const nextConfig = {
   },
   experimental: {
     optimizePackageImports: ['lucide-react'],
+    esmExternals: false,
+    serverComponentsExternalPackages: ['socket.io-client'],
   },
   compress: true,
   poweredByHeader: false,
@@ -42,8 +45,23 @@ const nextConfig = {
       'utf-8-validate': 'utf-8-validate',
     });
 
+    // WebContainer specific fixes
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      '@': require('path').resolve(__dirname),
+    };
+
+    // Disable problematic optimizations in WebContainer
+    if (dev) {
+      config.optimization = {
+        ...config.optimization,
+        splitChunks: false,
+        minimize: false,
+      };
+    }
+
     // Production optimizations
-    if (!dev) {
+    if (!dev && !isServer) {
       config.optimization = {
         ...config.optimization,
         splitChunks: {
@@ -91,6 +109,9 @@ const nextConfig = {
       },
     ];
   },
+  output: 'standalone',
+  trailingSlash: false,
+  reactStrictMode: false,
 };
 
 module.exports = nextConfig;

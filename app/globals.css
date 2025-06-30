@@ -44,7 +44,6 @@
     --chart-5: 27 87% 67%;
     --radius: 0.5rem;
   }
-
   .dark {
     --background: 0 0% 3.9%;
     --foreground: 0 0% 98%;
@@ -77,73 +76,7 @@
   * {
     @apply border-border;
   }
-
   body {
     @apply bg-background text-foreground;
   }
-}
-
-
-
-
-/* Custom Scrollbar */
-.custom-scrollbar {
-  /* Ensure the element is scrollable */
-  overflow-y: auto;
-  scrollbar-width: thin;
-  /* For Firefox */
-  scrollbar-color: transparent transparent;
-  /* Hide by default in Firefox */
-  /* Ensure content takes full width */
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Webkit browsers (Chrome, Safari, Edge) */
-.custom-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  /* Width of the scrollbar */
-  background: transparent;
-  /* Transparent background */
-}
-
-/* Track */
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-  /* Transparent track */
-}
-
-/* Thumb (the "blob") */
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: transparent;
-  /* Hidden by default */
-  border-radius: 10px;
-  /* Rounded blob shape */
-  transition: background 0.2s ease;
-  /* Smooth transition for visibility */
-}
-
-/* Show the thumb only when scrolling or hovering */
-.custom-scrollbar:hover::-webkit-scrollbar-thumb,
-.custom-scrollbar:active::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.8);
-  /* White blob with slight transparency */
-}
-
-/* Active state for better feedback */
-.custom-scrollbar::-webkit-scrollbar-thumb:active {
-  background: rgba(255, 255, 255, 1);
-  /* Solid white when clicking */
-}
-
-/* Hide scrollbar buttons (arrows) in Webkit browsers */
-.custom-scrollbar::-webkit-scrollbar-button {
-  display: none;
-  /* Explicitly hide the up/down arrows */
-}
-
-/* Firefox: Show thumb only on hover/active */
-.custom-scrollbar:hover,
-.custom-scrollbar:active {
-  scrollbar-color: rgba(255, 255, 255, 0.8) transparent;
 }

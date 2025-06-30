@@ -68,7 +68,7 @@ export const useSocket = () => {
     const initializeSocket = async () => {
       try {
         envLog.info('Initializing socket connection');
-        const { default: SocketManager } = await import('@/lib/socket');
+        const { default: SocketManager } = await import('@/lib/socket-manager');
         const socketManager = SocketManager.getInstance();
         
         // This will now properly await the connection

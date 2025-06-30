@@ -51,42 +51,46 @@ export function VideoPlayer({
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
-    if (window.YT && window.YT.Player) {
-      setApiLoaded(true);
-      return;
-    }
+    const loadYouTubeAPI = () => {
+      if (window.YT && window.YT.Player) {
+        setApiLoaded(true);
+        return;
+      }
 
-    if (document.querySelector('script[src*="youtube"]')) {
-      const checkAPI = setInterval(() => {
-        if (window.YT && window.YT.Player) {
-          setApiLoaded(true);
-          clearInterval(checkAPI);
-        }
-      }, 100);
-      return;
-    }
+      if (document.querySelector('script[src*="youtube"]')) {
+        const checkAPI = setInterval(() => {
+          if (window.YT && window.YT.Player) {
+            setApiLoaded(true);
+            clearInterval(checkAPI);
+          }
+        }, 100);
+        return;
+      }
 
-    const script = document.createElement('script');
-    script.src = 'https://www.youtube.com/iframe_api';
-    script.async = true;
-    script.onload = () => {
-      // API will call onYouTubeIframeAPIReady when ready
+      const script = document.createElement('script');
+      script.src = 'https://www.youtube.com/iframe_api';
+      script.async = true;
+      
+      window.onYouTubeIframeAPIReady = () => {
+        setApiLoaded(true);
+      };
+
+      script.onerror = () => {
+        console.error('Failed to load YouTube API');
+        setPlayerError('Failed to load YouTube player');
+      };
+
+      document.head.appendChild(script);
     };
-    script.onerror = () => {
-      console.error('Failed to load YouTube API');
-      setPlayerError('Failed to load YouTube player');
-    };
 
-    (window as any).onYouTubeIframeAPIReady = () => {
-      setApiLoaded(true);
-    };
-
-    document.head.appendChild(script);
+    loadYouTubeAPI();
 
     return () => {
-      const existingScript = document.querySelector('script[src*="youtube"]');
-      if (existingScript && existingScript.parentNode) {
-        existingScript.parentNode.removeChild(existingScript);
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+      if (autoplayTimeoutRef.current) {
+        clearTimeout(autoplayTimeoutRef.current);
       }
     };
   }, []);
