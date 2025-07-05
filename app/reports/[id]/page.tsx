@@ -310,7 +310,7 @@ export default function ReportDetailPage() {
             <h3 className="font-bold text-blue-300 mb-2">General Recommendations:</h3>
             <ul className="space-y-1 text-sm text-blue-200">
               <li>• Complete all critical repairs at least 1 week before production start date</li>
-              <li>• Schedule follow-up inspections for items marked as "Fair" condition</li>
+              <li>• Schedule follow-up inspections for items marked as &quot;Fair&quot; condition</li>
               <li>• Maintain regular inspection schedule throughout production run</li>
               <li>• Document all repairs and improvements for future reference</li>
               <li>• Ensure all safety equipment is tested and functional before opening night</li>

@@ -9,6 +9,7 @@ import { Play, Pause, SkipForward, Volume2, VolumeX, Music, RotateCcw, Users, Al
 import { VideoState, QueueItem } from '@/hooks/useSocket';
 import { extractVideoId } from '@/lib/youtube-api-enhanced';
 import { toast } from 'sonner';
+import Image from 'next/image';
 
 interface VideoPlayerProps {
   currentVideo: QueueItem | null;
@@ -500,9 +501,11 @@ export function VideoPlayer({
               Added by {currentVideo.addedBy}
             </p>
           </div>
-          <img
+          <Image
             src={currentVideo.thumbnail}
             alt={currentVideo.title}
+            width={640}
+            height={360}
             className="w-16 h-12 object-cover rounded"
           />
         </div>

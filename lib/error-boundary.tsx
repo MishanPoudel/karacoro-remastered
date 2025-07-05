@@ -62,7 +62,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <AlertTriangle className="w-16 h-16 text-red-500 mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-4">Something went wrong</h2>
             <p className="text-gray-300 mb-6">
-              We're sorry, but something unexpected happened. Please try refreshing the page or go back to the home page.
+              We&apos;re sorry, but something unexpected happened. Please try refreshing the page or go back to the home page.
             </p>
             
             {process.env.NODE_ENV === 'development' && this.state.error && (

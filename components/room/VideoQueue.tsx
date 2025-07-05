@@ -20,6 +20,7 @@ import {
   YouTubeSearchResult
 } from '@/lib/youtube-api-enhanced';
 import { toast } from 'sonner';
+import Image from 'next/image';
 
 interface VideoQueueProps {
   queue: QueueItem[];
@@ -124,17 +125,21 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
     setIsSearching(true);
     try {
       const { results, isMock } = await searchYouTubeVideos(searchQuery, 15);
-      setSearchResults(results);
+      // Filter out results from the "singking" channel
+      const filteredResults = results.filter(
+        (video) => video.channelTitle.toLowerCase() !== 'sing king'
+      );
+      setSearchResults(filteredResults);
       setIsSearchMock(isMock);
       
       if (isMock) {
         toast.info('Using mock search results - YouTube API not configured', {
           description: 'Configure your YouTube API key for real search results'
         });
-      } else if (results.length === 0) {
+      } else if (filteredResults.length === 0) {
         toast.info('No videos found for your search');
       } else {
-        toast.success(`Found ${results.length} videos`);
+        toast.success(`Found ${filteredResults.length} videos`);
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -339,11 +344,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                             key={video.id}
                             className="flex items-center gap-4 p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
                           >
-                            <img
-                              src={video.thumbnail}
-                              alt={video.title}
-                              className="w-24 h-18 object-cover rounded-md flex-shrink-0"
-                            />
+                            <Image src={video.thumbnail} alt={video.title} width={96} height={72} className="w-24 h-18 object-cover rounded-md flex-shrink-0" />
                             <div className="flex-1 min-w-0">
                               <h4 className="text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
                                 {video.title}
@@ -430,11 +431,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                           key={video.id}
                           className="flex items-center gap-4 p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
                         >
-                          <img
-                            src={video.thumbnail}
-                            alt={video.title}
-                            className="w-24 h-18 object-cover rounded-md flex-shrink-0"
-                          />
+                          <Image src={video.thumbnail} alt={video.title} width={96} height={72} className="w-24 h-18 object-cover rounded-md flex-shrink-0" />
                           <div className="flex-1 min-w-0">
                             <h4 className="text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
                               {video.title}
@@ -513,11 +510,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                           </div>
                           
                           {/* Thumbnail */}
-                          <img
-                            src={item.thumbnail}
-                            alt={item.title}
-                            className="w-20 h-15 object-cover rounded-md flex-shrink-0"
-                          />
+                          <Image src={item.thumbnail} alt={item.title} width={80} height={60} className="w-20 h-15 object-cover rounded-md flex-shrink-0" />
                           
                           {/* Video Info */}
                           <div className="flex-1 min-w-0">

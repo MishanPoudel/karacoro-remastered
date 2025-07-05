@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Mic, MicOff, Volume2, VolumeX, Users, Wifi, WifiOff, AlertTriangle, Settings, Loader2 } from 'lucide-react';
-import { toast } from 'sonner';
 import { envLog } from '@/lib/config';
 
 export interface VoiceParticipant {
@@ -325,10 +324,10 @@ export function VoiceChat({
       envLog.info('Connecting to voice chat...');
       
       if (isDemoMode) {
-        toast.info('🎭 Demo Voice Chat', {
-          description: 'Voice chat is simulated in demo mode',
-          duration: 3000,
-        });
+        // toast.info('🎭 Demo Voice Chat', {
+        //   description: 'Voice chat is simulated in demo mode',
+        //   duration: 3000,
+        // });
       }
       
       const stream = await requestMicrophoneAccess();
@@ -387,28 +386,27 @@ export function VoiceChat({
       const message = isDemoMode 
         ? 'Connected to demo voice chat!' 
         : 'Connected to voice chat!';
-      toast.success(message);
+      // toast.success(message);
       envLog.info('Voice chat connected successfully');
     } catch (error) {
       envLog.error('Failed to connect to voice chat:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect to voice chat';
       setError(errorMessage);
       setIsConnecting(false);
-      toast.error(errorMessage);
+      // toast.error(errorMessage);
     }
   };
 
-  const disconnectFromVoiceChat = async () => {
+  // Memoize disconnectFromVoiceChat to avoid useEffect dependency warning
+  const disconnectFromVoiceChat = useCallback(async () => {
     if (!isConnected) return;
 
     try {
       envLog.info('Disconnecting from voice chat...');
-      
       if (voiceActivityTimerRef.current) {
         clearInterval(voiceActivityTimerRef.current);
         voiceActivityTimerRef.current = null;
       }
-
       const peerConnections = Array.from(peerConnectionsRef.current.entries());
       for (const [peerId, pc] of peerConnections) {
         try {
@@ -418,7 +416,6 @@ export function VoiceChat({
         }
       }
       peerConnectionsRef.current.clear();
-
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach(track => {
           try {
@@ -429,7 +426,6 @@ export function VoiceChat({
         });
         localStreamRef.current = null;
       }
-
       if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
         try {
           await audioContextRef.current.close();
@@ -439,10 +435,8 @@ export function VoiceChat({
         audioContextRef.current = null;
         analyserRef.current = null;
       }
-
       const audioElements = document.querySelectorAll('audio[data-participant]');
       audioElements.forEach(element => element.remove());
-
       const currentSocket = getCurrentSocket();
       if (currentSocket) {
         currentSocket.emit('voice_leave', {
@@ -450,26 +444,23 @@ export function VoiceChat({
           userId
         });
       }
-
       setIsConnected(false);
       setParticipants([]);
-      
       onConnectionStatusChange?.(false);
       onVoiceParticipantsChange?.([]);
-      
       const message = isDemoMode 
         ? 'Disconnected from demo voice chat' 
         : 'Disconnected from voice chat';
-      toast.info(message);
+      // toast.info(message);
       envLog.info('Voice chat disconnected');
     } catch (error) {
       envLog.error('Error disconnecting from voice chat:', error);
     }
-  };
+  }, [isConnected, voiceActivityTimerRef, peerConnectionsRef, localStreamRef, audioContextRef, analyserRef, getCurrentSocket, roomId, userId, onConnectionStatusChange, onVoiceParticipantsChange, isDemoMode]);
 
   const toggleMute = () => {
     if (!localStreamRef.current || !isConnected) {
-      toast.warning('Not connected to voice chat');
+      // toast.warning('Not connected to voice chat');
       return;
     }
 
@@ -498,7 +489,7 @@ export function VoiceChat({
       });
     }
 
-    onMuteStatusChange?.(newMutedState);
+    // onMuteStatusChange?.(newMutedState);
     
     envLog.info(`Microphone ${newMutedState ? 'muted' : 'unmuted'}`);
   };
@@ -544,7 +535,8 @@ export function VoiceChat({
     return () => {
       disconnectFromVoiceChat();
     };
-  }, [roomId, userId]);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId, userId, disconnectFromVoiceChat]);
 
   useEffect(() => {
     onVoiceParticipantsChange?.(participants);

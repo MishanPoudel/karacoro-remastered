@@ -39,6 +39,7 @@ export const metadata: Metadata = {
   viewport: 'width=device-width, initial-scale=1',
   themeColor: '#ef4444',
   manifest: '/manifest.json',
+  metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://karaoke-party.com'),
 };
 
 export default function RootLayout({

@@ -1,10 +1,12 @@
 /** @type {import('next').NextConfig} */
+const path = require('path');
+
 const nextConfig = {
   swcMinify: false,
   eslint: {
     ignoreDuringBuilds: true,
   },
-  images: { 
+  images: {
     unoptimized: true,
     domains: ['img.youtube.com', 'i.ytimg.com'],
   },
@@ -16,8 +18,8 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
   generateEtags: false,
+
   webpack: (config, { isServer, dev }) => {
-    // Ignore node-specific modules when bundling for the browser
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
@@ -37,21 +39,18 @@ const nextConfig = {
         'utf-8-validate': false,
       };
     }
-    
-    // Ignore optional dependencies that cause warnings
+
     config.externals = config.externals || [];
     config.externals.push({
       'bufferutil': 'bufferutil',
       'utf-8-validate': 'utf-8-validate',
     });
 
-    // WebContainer specific fixes
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@': require('path').resolve(__dirname),
+      '@': path.resolve(__dirname),
     };
 
-    // Disable problematic optimizations in WebContainer
     if (dev) {
       config.optimization = {
         ...config.optimization,
@@ -60,7 +59,6 @@ const nextConfig = {
       };
     }
 
-    // Production optimizations
     if (!dev && !isServer) {
       config.optimization = {
         ...config.optimization,
@@ -79,11 +77,40 @@ const nextConfig = {
 
     return config;
   },
+
   async headers() {
+    const isDev = 'production';
+
+    const connectSrc = [
+      "'self'",
+      "https://www.googleapis.com",
+      "https://www.youtube.com",
+      "wss:",
+      "ws:",
+      ...(isDev ? ["http://localhost:3001"] : [])
+    ].join(' ');
+
+    const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https://img.youtube.com https://i.ytimg.com",
+    "connect-src 'self' https://www.googleapis.com https://www.youtube.com wss: ws: http://localhost:3001/",  // ← important
+    "font-src 'self'",
+    "media-src 'self'",
+    "frame-src https://www.youtube.com"
+  ].join('; ');
+    // Debug log — remove in production
+    console.log('\n🔐 Final CSP Header:\n', csp, '\n');
+
     return [
       {
         source: '/(.*)',
         headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: csp,
+          },
           {
             key: 'X-Frame-Options',
             value: 'DENY',
@@ -100,6 +127,7 @@ const nextConfig = {
       },
     ];
   },
+
   async redirects() {
     return [
       {
@@ -109,6 +137,7 @@ const nextConfig = {
       },
     ];
   },
+
   output: 'standalone',
   trailingSlash: false,
   reactStrictMode: false,

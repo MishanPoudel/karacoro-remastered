@@ -209,7 +209,7 @@ export default function Home() {
               Why Choose <span className="text-red-500">KaraCoro</span>?
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              We've built the most advanced online karaoke platform with features that make singing together feel natural and fun.
+              We&apos;ve built the most advanced online karaoke platform with features that make singing together feel natural and fun.
             </p>
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
@@ -285,7 +285,7 @@ export default function Home() {
               What People <span className="text-red-500">Say</span>
             </h2>
             <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              Join thousands of happy singers who've made KaraCoro their go-to karaoke platform.
+              Join thousands of happy singers who&apos;ve made KaraCoro their go-to karaoke platform.
             </p>
           </div>
           <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -296,7 +296,7 @@ export default function Home() {
                     <Star key={i} className="w-5 h-5 text-yellow-400 fill-current" />
                   ))}
                 </div>
-                <p className="text-gray-300 mb-4 italic">"{testimonial.content}"</p>
+                <p className="text-gray-300 mb-4 italic">&quot;{testimonial.content}&quot;</p>
                 <div>
                   <p className="font-semibold text-white">{testimonial.name}</p>
                   <p className="text-sm text-gray-400">{testimonial.role}</p>
@@ -316,7 +316,7 @@ export default function Home() {
               Ready to Create <span className="text-red-200">Musical Magic</span>?
             </h2>
             <p className="text-xl text-red-100 mb-12 leading-relaxed">
-              Join the KaraCoro community today. It's completely free, works in any browser, and brings people together through the power of music.
+              Join the KaraCoro community today. It&apos;s completely free, works in any browser, and brings people together through the power of music.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button 

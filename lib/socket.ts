@@ -278,7 +278,7 @@ export const useSocket = () => {
         }
       }
     };
-  }, []);
+  }, [roomState.isDemoMode]);
 
   const joinRoom = (roomId: string, username: string) => {
     if (socketRef.current) {
