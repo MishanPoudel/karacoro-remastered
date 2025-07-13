@@ -7,8 +7,8 @@ class SocketManager {
   private static instance: SocketManager;
   private isUsingMock: boolean = false;
   private connectionAttempts: number = 0;
-  private maxRetries: number = 2;
-  private connectionTimeout: number = 3000;
+  private maxRetries: number = 3;
+  private connectionTimeout: number = 5000;
 
   private constructor() {}
 
@@ -25,18 +25,25 @@ class SocketManager {
     }
 
     const currentUrl = window.location;
-    const protocol = currentUrl.protocol === 'https:' ? 'https:' : 'http:';
     
+    // Check for environment variable first
+    if (process.env.NEXT_PUBLIC_SOCKET_URL) {
+      return process.env.NEXT_PUBLIC_SOCKET_URL;
+    }
+    
+    // WebContainer detection
     if (currentUrl.hostname.includes('webcontainer-api.io')) {
       const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
-      return `${protocol}//${socketHostname}`;
+      return `${currentUrl.protocol}//${socketHostname}`;
     }
     
-    if (currentUrl.hostname === 'localhost') {
-      return `${protocol}//localhost:3001`;
+    // Local development
+    if (currentUrl.hostname === 'localhost' || currentUrl.hostname === '127.0.0.1') {
+      return `${currentUrl.protocol}//localhost:3001`;
     }
     
-    return `${protocol}//${currentUrl.hostname}:3001`;
+    // Production fallback
+    return `${currentUrl.protocol}//${currentUrl.hostname}:3001`;
   }
 
   async connect(): Promise<Socket | MockSocket> {
@@ -48,14 +55,18 @@ class SocketManager {
 
     try {
       const socketUrl = this.getSocketUrl();
-      console.log(`Attempting to connect to socket server (attempt ${this.connectionAttempts}/${this.maxRetries}):`, socketUrl);
+      console.log(`🔌 Attempting to connect to socket server (attempt ${this.connectionAttempts}/${this.maxRetries}):`, socketUrl);
       
       const realSocket = io(socketUrl, {
-        transports: ['polling', 'websocket'],
+        transports: ['websocket', 'polling'],
         timeout: this.connectionTimeout,
         forceNew: true,
-        reconnection: false,
-        autoConnect: true
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
+        autoConnect: true,
+        upgrade: true,
+        rememberUpgrade: false
       });
 
       const connectionResult = await Promise.race([
@@ -113,12 +124,12 @@ class SocketManager {
       console.warn(`❌ Failed to connect to socket server (attempt ${this.connectionAttempts}/${this.maxRetries}):`, error);
       
       if (this.connectionAttempts < this.maxRetries) {
-        console.log(`Retrying connection in 1 second...`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`🔄 Retrying connection in 2 seconds...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
         return this.connect();
       }
 
-      console.log('All connection attempts failed, switching to demo mode');
+      console.log('🎭 All connection attempts failed, switching to demo mode');
       const mockSocketManager = MockSocketManager.getInstance();
       this.socket = mockSocketManager.createMockSocket();
       this.isUsingMock = true;

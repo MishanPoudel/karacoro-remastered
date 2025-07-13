@@ -46,7 +46,6 @@ export function VideoPlayer({
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [forceReload, setForceReload] = useState(0);
   const [apiLoaded, setApiLoaded] = useState(false);
-  const autoplayTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load YouTube API
   useEffect(() => {
@@ -90,9 +89,6 @@ export function VideoPlayer({
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
       }
-      if (autoplayTimeoutRef.current) {
-        clearTimeout(autoplayTimeoutRef.current);
-      }
     };
   }, []);
 
@@ -135,11 +131,6 @@ export function VideoPlayer({
       clearInterval(syncIntervalRef.current);
       syncIntervalRef.current = null;
     }
-
-    if (autoplayTimeoutRef.current) {
-      clearTimeout(autoplayTimeoutRef.current);
-      autoplayTimeoutRef.current = null;
-    }
     
     setForceReload(prev => prev + 1);
   };
@@ -157,7 +148,7 @@ export function VideoPlayer({
         const isPlayerPlaying = playerState === 1;
         
         const timeDiff = Math.abs(currentPlayerTime - videoState.currentTime);
-        const shouldSync = timeDiff > 1.5;
+        const shouldSync = timeDiff > 2.0;
 
         if (shouldSync && videoState.currentTime > 0) {
           isSeekingRef.current = true;
@@ -166,16 +157,15 @@ export function VideoPlayer({
           
           setTimeout(() => {
             isSeekingRef.current = false;
-          }, 800);
+          }, 1000);
         }
 
-        setTimeout(() => {
-          if (videoState.isPlaying && !isPlayerPlaying && !isBuffering) {
-            playerRef.current.playVideo();
-          } else if (!videoState.isPlaying && isPlayerPlaying) {
-            playerRef.current.pauseVideo();
-          }
-        }, 100);
+        // Sync play/pause state
+        if (videoState.isPlaying && !isPlayerPlaying && !isBuffering) {
+          playerRef.current.playVideo();
+        } else if (!videoState.isPlaying && isPlayerPlaying) {
+          playerRef.current.pauseVideo();
+        }
 
         setLocalState({
           isPlaying: videoState.isPlaying,
@@ -209,7 +199,7 @@ export function VideoPlayer({
     }
   }, [currentVideo]);
 
-  // Update current time periodically for host
+  // Update current time periodically
   useEffect(() => {
     if (!isReady || !playerRef.current) return;
 

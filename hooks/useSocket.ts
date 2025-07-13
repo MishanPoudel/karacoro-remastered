@@ -68,10 +68,11 @@ export const useSocket = () => {
     const initializeSocket = async () => {
       try {
         envLog.info('Initializing socket connection');
+        
+        // Dynamic import to avoid SSR issues
         const { default: SocketManager } = await import('@/lib/socket-manager');
         const socketManager = SocketManager.getInstance();
         
-        // This will now properly await the connection
         const socket = await socketManager.connect();
         socketRef.current = socket;
         
@@ -81,17 +82,10 @@ export const useSocket = () => {
         }
         
         const isDemoMode = socketManager.isInDemoMode();
-        setRoomState(prev => ({ ...prev, isDemoMode }));
+        setRoomState(prev => ({ ...prev, isDemoMode, connected: socketManager.isConnected() }));
         
         if (isDemoMode) {
           trackKaraokeEvent('socket_connected', { type: 'mock' });
-          // Show persistent demo mode indicator
-          setTimeout(() => {
-            toast.info('🎭 Demo Mode', {
-              description: 'You\'re using KaraCoro in demo mode. All features are simulated.',
-              duration: 3000,
-            });
-          }, 2000);
         } else {
           trackKaraokeEvent('socket_connected', { type: 'real' });
         }
@@ -102,6 +96,7 @@ export const useSocket = () => {
       } catch (error) {
         envLog.error('Failed to initialize socket:', error);
         trackError(error as Error, { context: 'socket_initialization' });
+        setRoomState(prev => ({ ...prev, connected: false }));
       }
     };
 
@@ -118,10 +113,15 @@ export const useSocket = () => {
         trackKaraokeEvent('socket_connection_established');
       });
 
-      socket.on('disconnect', () => {
-        envLog.info('Socket disconnected');
+      socket.on('disconnect', (reason) => {
+        envLog.info('Socket disconnected:', reason);
         setRoomState(prev => ({ ...prev, connected: false }));
-        trackKaraokeEvent('socket_disconnected');
+        trackKaraokeEvent('socket_disconnected', { reason });
+      });
+
+      socket.on('connect_error', (error) => {
+        envLog.error('Socket connection error:', error);
+        setRoomState(prev => ({ ...prev, connected: false }));
       });
 
       // Room events
@@ -142,8 +142,7 @@ export const useSocket = () => {
         trackKaraokeEvent('room_joined', {
           roomId: data.roomId,
           isHost: data.isHost,
-          userCount: data.users?.length || 0,
-          isDemoMode: roomState.isDemoMode
+          userCount: data.users?.length || 0
         });
       });
 
@@ -286,7 +285,7 @@ export const useSocket = () => {
         }
       }
     };
-  }, [roomState.isDemoMode]);
+  }, []);
 
   const joinRoom = (roomId: string, username: string) => {
     if (socketRef.current) {

@@ -43,10 +43,12 @@ app.use(express.json());
 // Socket.io setup
 const io = new Server(server, {
   cors: corsOptions,
-  transports: ['polling', 'websocket'],
+  transports: ['websocket', 'polling'],
   allowEIO3: true,
   pingTimeout: 60000,
-  pingInterval: 25000
+  pingInterval: 25000,
+  upgradeTimeout: 30000,
+  maxHttpBufferSize: 1e6
 });
 
 // In-memory storage
@@ -70,11 +72,11 @@ function extractVideoId(url) {
 
 // Socket connection handling
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  console.log('🔌 User connected:', socket.id);
 
   socket.on('join_room', ({ roomId, username }) => {
     try {
-      console.log(`User ${username} joining room ${roomId}`);
+      console.log(`👤 User ${username} joining room ${roomId}`);
       
       // Validate inputs
       if (!roomId || !username) {
@@ -94,6 +96,7 @@ io.on('connection', (socket) => {
             isHost: existingUser.isHost,
             socketId: socket.id
           });
+          console.log(`👋 User ${existingUser.username} left room ${existingUser.roomId}`);
         }
       }
 
@@ -105,9 +108,10 @@ io.on('connection', (socket) => {
           queue: [],
           currentVideo: null,
           videoState: { isPlaying: false, currentTime: 0, lastUpdate: Date.now() },
-          chatHistory: []
+          chatHistory: [],
+          createdAt: new Date()
         });
-        console.log(`Created new room: ${roomId}`);
+        console.log(`🏠 Created new room: ${roomId}`);
       }
 
       const room = rooms.get(roomId);
@@ -116,7 +120,7 @@ io.on('connection', (socket) => {
       // Create user
       const user = {
         socketId: socket.id,
-        username,
+        username: username.trim(),
         roomId,
         isHost,
         joinedAt: new Date()
@@ -126,12 +130,12 @@ io.on('connection', (socket) => {
       room.users.set(socket.id, user);
       socket.join(roomId);
 
-      console.log(`User ${username} joined room ${roomId} as ${isHost ? 'host' : 'guest'}. Room now has ${room.users.size} users.`);
+      console.log(`✅ User ${username} joined room ${roomId} as ${isHost ? 'host' : 'guest'}. Room now has ${room.users.size} users.`);
 
       // Send room state to user
       socket.emit('room_joined', {
         roomId,
-        username,
+        username: user.username,
         isHost,
         users: Array.from(room.users.values()).map(u => ({
           username: u.username,
@@ -141,10 +145,10 @@ io.on('connection', (socket) => {
         queue: room.queue,
         currentVideo: room.currentVideo,
         videoState: room.videoState,
-        chatHistory: room.chatHistory
+        chatHistory: room.chatHistory.slice(-50) // Send last 50 messages
       });
 
-      // Notify others
+      // Notify others about new user
       socket.to(roomId).emit('user_joined', {
         username: user.username,
         isHost: user.isHost,
@@ -152,7 +156,7 @@ io.on('connection', (socket) => {
       });
 
     } catch (error) {
-      console.error('Error joining room:', error);
+      console.error('❌ Error joining room:', error);
       socket.emit('error', { message: 'Failed to join room' });
     }
   });
@@ -162,8 +166,13 @@ io.on('connection', (socket) => {
       const user = users.get(socket.id);
       if (!user) return;
 
+      if (!newUsername || newUsername.trim().length < 2) {
+        socket.emit('error', { message: 'Username must be at least 2 characters' });
+        return;
+      }
+
       const oldUsername = user.username;
-      user.username = newUsername;
+      user.username = newUsername.trim();
       users.set(socket.id, user);
 
       const room = rooms.get(user.roomId);
@@ -172,11 +181,12 @@ io.on('connection', (socket) => {
         io.to(user.roomId).emit('username_changed', {
           socketId: socket.id,
           oldUsername,
-          newUsername
+          newUsername: user.username
         });
+        console.log(`📝 Username changed from ${oldUsername} to ${user.username} in room ${user.roomId}`);
       }
     } catch (error) {
-      console.error('Error changing username:', error);
+      console.error('❌ Error changing username:', error);
     }
   });
 
@@ -184,6 +194,11 @@ io.on('connection', (socket) => {
     try {
       const user = users.get(socket.id);
       if (!user) return;
+
+      if (!message || message.trim().length === 0) {
+        socket.emit('error', { message: 'Message cannot be empty' });
+        return;
+      }
 
       const chatMessage = {
         id: Date.now() + Math.random(),
@@ -196,14 +211,17 @@ io.on('connection', (socket) => {
       const room = rooms.get(user.roomId);
       if (room) {
         room.chatHistory.push(chatMessage);
+        // Keep only last 100 messages
         if (room.chatHistory.length > 100) {
           room.chatHistory = room.chatHistory.slice(-100);
         }
+        
+        // Broadcast to all users in room
         io.to(user.roomId).emit('chat_message', chatMessage);
-        console.log(`Chat message from ${user.username} in room ${user.roomId}: ${message}`);
+        console.log(`💬 Chat message from ${user.username} in room ${user.roomId}: ${message.substring(0, 50)}${message.length > 50 ? '...' : ''}`);
       }
     } catch (error) {
-      console.error('Error sending chat message:', error);
+      console.error('❌ Error sending chat message:', error);
     }
   });
 
@@ -221,43 +239,65 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // Check if video already in queue
+      const alreadyInQueue = room.queue.some(v => v.videoId === videoId);
+      const isCurrentVideo = room.currentVideo && room.currentVideo.videoId === videoId;
+      
+      if (alreadyInQueue || isCurrentVideo) {
+        socket.emit('error', { message: 'Video already in queue or currently playing' });
+        return;
+      }
+
       const queueItem = {
         id: Date.now() + Math.random(),
         videoId,
         title: title || 'Unknown Title',
         duration: duration || 0,
-        thumbnail: thumbnail || '',
+        thumbnail: thumbnail || `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`,
         addedBy: user.username,
         addedAt: new Date()
       };
 
       room.queue.push(queueItem);
-      console.log(`Added video "${title}" to queue in room ${user.roomId}`);
+      console.log(`🎵 Added video "${title}" to queue in room ${user.roomId} by ${user.username}`);
 
-      io.to(user.roomId).emit('queue_updated', { queue: room.queue });
+      // Broadcast queue update
+      io.to(user.roomId).emit('queue_updated', { 
+        queue: room.queue,
+        addedBy: user.username,
+        videoTitle: queueItem.title
+      });
 
       // Auto-start if no current video
       if (!room.currentVideo) {
-        const nextVideo = room.queue.shift();
-        room.currentVideo = nextVideo;
-        room.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
+        setTimeout(() => {
+          const nextVideo = room.queue.shift();
+          if (nextVideo) {
+            room.currentVideo = nextVideo;
+            room.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
 
-        io.to(user.roomId).emit('video_changed', {
-          video: room.currentVideo,
-          queue: room.queue,
-          videoState: room.videoState
-        });
-        console.log(`Auto-started video "${nextVideo.title}" in room ${user.roomId}`);
+            io.to(user.roomId).emit('video_changed', {
+              video: room.currentVideo,
+              queue: room.queue,
+              videoState: room.videoState
+            });
+            console.log(`▶️ Auto-started video "${nextVideo.title}" in room ${user.roomId}`);
+          }
+        }, 500);
       }
     } catch (error) {
-      console.error('Error adding to queue:', error);
+      console.error('❌ Error adding to queue:', error);
+      socket.emit('error', { message: 'Failed to add video to queue' });
     }
   });
 
   socket.on('remove_from_queue', ({ videoId }) => {
     try {
       const user = users.get(socket.id);
-      if (!user || !user.isHost) return;
+      if (!user || !user.isHost) {
+        socket.emit('error', { message: 'Only host can remove videos from queue' });
+        return;
+      }
 
       const room = rooms.get(user.roomId);
       if (!room) return;
@@ -266,11 +306,14 @@ io.on('connection', (socket) => {
       room.queue = room.queue.filter(v => v.id !== videoId);
 
       if (room.queue.length < initialLength) {
-        io.to(user.roomId).emit('queue_updated', { queue: room.queue });
-        console.log(`Removed video from queue in room ${user.roomId}`);
+        io.to(user.roomId).emit('queue_updated', { 
+          queue: room.queue,
+          removedBy: user.username
+        });
+        console.log(`🗑️ Removed video from queue in room ${user.roomId} by ${user.username}`);
       }
     } catch (error) {
-      console.error('Error removing from queue:', error);
+      console.error('❌ Error removing from queue:', error);
     }
   });
 
@@ -289,17 +332,21 @@ io.on('connection', (socket) => {
         action
       };
 
+      // Broadcast to all other users in the room
       socket.to(user.roomId).emit('video_state_sync', room.videoState);
-      console.log(`Video state changed in room ${user.roomId}: ${action} at ${currentTime}s`);
+      console.log(`🎬 Video state changed in room ${user.roomId}: ${action} at ${currentTime.toFixed(1)}s`);
     } catch (error) {
-      console.error('Error syncing video state:', error);
+      console.error('❌ Error syncing video state:', error);
     }
   });
 
   socket.on('skip_video', () => {
     try {
       const user = users.get(socket.id);
-      if (!user || !user.isHost) return;
+      if (!user || !user.isHost) {
+        socket.emit('error', { message: 'Only host can skip videos' });
+        return;
+      }
 
       const room = rooms.get(user.roomId);
       if (!room) return;
@@ -312,20 +359,22 @@ io.on('connection', (socket) => {
         io.to(user.roomId).emit('video_changed', {
           video: room.currentVideo,
           queue: room.queue,
-          videoState: room.videoState
+          videoState: room.videoState,
+          skippedBy: user.username
         });
-        console.log(`Skipped to next video "${nextVideo.title}" in room ${user.roomId}`);
+        console.log(`⏭️ Skipped to next video "${nextVideo.title}" in room ${user.roomId}`);
       } else {
         room.currentVideo = null;
         room.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
+        
         io.to(user.roomId).emit('video_ended', {
           queue: room.queue,
           videoState: room.videoState
         });
-        console.log(`No more videos in queue for room ${user.roomId}`);
+        console.log(`⏹️ No more videos in queue for room ${user.roomId}`);
       }
     } catch (error) {
-      console.error('Error skipping video:', error);
+      console.error('❌ Error skipping video:', error);
     }
   });
 
@@ -347,81 +396,118 @@ io.on('connection', (socket) => {
           queue: room.queue,
           videoState: room.videoState
         });
-        console.log(`Auto-advanced to next video "${nextVideo.title}" in room ${user.roomId}`);
+        console.log(`🔄 Auto-advanced to next video "${nextVideo.title}" in room ${user.roomId}`);
       } else {
         room.currentVideo = null;
         room.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
+        
         io.to(user.roomId).emit('video_ended', {
           queue: room.queue,
           videoState: room.videoState
         });
-        console.log(`Queue empty in room ${user.roomId}`);
+        console.log(`🏁 Queue empty in room ${user.roomId}`);
       }
     } catch (error) {
-      console.error('Error handling video end:', error);
+      console.error('❌ Error handling video end:', error);
     }
   });
 
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     try {
-      console.log('User disconnected:', socket.id);
+      console.log('🔌 User disconnected:', socket.id, 'Reason:', reason);
       const user = users.get(socket.id);
       if (!user) return;
 
       const room = rooms.get(user.roomId);
       if (room) {
         room.users.delete(socket.id);
+        
+        // Notify other users
         socket.to(user.roomId).emit('user_left', {
           username: user.username,
           isHost: user.isHost,
           socketId: socket.id
         });
-        console.log(`User ${user.username} left room ${user.roomId}. Room now has ${room.users.size} users.`);
+        
+        console.log(`👋 User ${user.username} left room ${user.roomId}. Room now has ${room.users.size} users.`);
 
         // Transfer host if needed
         if (user.isHost && room.users.size > 0) {
-          const newHost = Array.from(room.users.values())[0];
-          newHost.isHost = true;
-          users.set(newHost.socketId, newHost);
-          room.users.set(newHost.socketId, newHost);
+          const newHostEntry = Array.from(room.users.entries())[0];
+          const [newHostSocketId, newHostUser] = newHostEntry;
+          
+          newHostUser.isHost = true;
+          users.set(newHostSocketId, newHostUser);
+          room.users.set(newHostSocketId, newHostUser);
+          
           io.to(user.roomId).emit('host_changed', {
-            newHost: newHost.username,
-            socketId: newHost.socketId
+            newHost: newHostUser.username,
+            socketId: newHostSocketId
           });
-          console.log(`Host transferred to ${newHost.username} in room ${user.roomId}`);
+          console.log(`👑 Host transferred to ${newHostUser.username} in room ${user.roomId}`);
         }
 
         // Delete empty room
         if (room.users.size === 0) {
           rooms.delete(user.roomId);
-          console.log(`Deleted empty room ${user.roomId}`);
+          console.log(`🗑️ Deleted empty room ${user.roomId}`);
         }
       }
 
       users.delete(socket.id);
     } catch (error) {
-      console.error('Error handling disconnect:', error);
+      console.error('❌ Error handling disconnect:', error);
     }
+  });
+
+  // Handle connection errors
+  socket.on('error', (error) => {
+    console.error('❌ Socket error for', socket.id, ':', error);
   });
 });
 
 // Health check
 app.get('/health', (req, res) => {
+  const roomDetails = Array.from(rooms.entries()).map(([id, room]) => ({
+    id,
+    userCount: room.users.size,
+    queueLength: room.queue.length,
+    hasCurrentVideo: !!room.currentVideo,
+    createdAt: room.createdAt
+  }));
+
   res.json({ 
-    status: 'ok', 
-    rooms: rooms.size, 
-    users: users.size,
-    roomDetails: Array.from(rooms.entries()).map(([id, room]) => ({
-      id,
-      userCount: room.users.size,
-      queueLength: room.queue.length,
-      hasCurrentVideo: !!room.currentVideo
-    }))
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    stats: {
+      rooms: rooms.size,
+      users: users.size,
+      connections: io.engine.clientsCount
+    },
+    roomDetails
   });
+});
+
+// Error handling
+app.use((err, req, res, next) => {
+  console.error('Express error:', err);
+  res.status(500).json({ error: 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`🎤 Karaoke server running on port ${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
+  console.log(`📊 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔌 Socket.io server ready for connections`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+    process.exit(0);
+  });
 });
