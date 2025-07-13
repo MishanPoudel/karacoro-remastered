@@ -12,6 +12,7 @@ export interface MockSocket {
   leave: (room: string) => void;
   to: (room: string) => MockSocket;
   disconnect: () => void;
+  removeAllListeners: () => void;
 }
 
 class MockSocketManager {
@@ -57,6 +58,10 @@ class MockSocketManager {
             handlers.splice(index, 1);
           }
         }
+      },
+
+      removeAllListeners: () => {
+        this.eventHandlers.clear();
       },
 
       emit: (event: string, data?: any) => {
@@ -152,44 +157,39 @@ class MockSocketManager {
   private handleJoinRoom(data: { roomId: string; username: string }) {
     const { roomId, username } = data;
     
-    // Add mock users if room is empty
-    if (this.mockUsers.length === 0) {
-      this.mockUsers = [
-        {
-          username: username,
-          isHost: true,
-          socketId: this.socket!.id
-        },
-        {
-          username: 'DemoUser1',
-          isHost: false,
-          socketId: 'demo_user_1'
-        },
-        {
-          username: 'DemoUser2',
-          isHost: false,
-          socketId: 'demo_user_2'
-        }
-      ];
+    // Reset state for new room
+    this.mockUsers = [];
+    this.mockChatHistory = [];
+    this.mockQueue = [];
+    this.currentVideo = null;
+    this.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
+    
+    // Add current user as host
+    this.mockUsers = [
+      {
+        username: username,
+        isHost: true,
+        socketId: this.socket!.id
+      }
+    ];
 
-      // Add some demo chat messages
-      this.mockChatHistory = [
-        {
-          id: 1,
-          username: 'DemoUser1',
-          message: 'Welcome to the demo room! 🎤',
-          timestamp: new Date(Date.now() - 300000),
-          isHost: false
-        },
-        {
-          id: 2,
-          username: 'DemoUser2',
-          message: 'This is a demo of KaraCoro! Add some songs to get started.',
-          timestamp: new Date(Date.now() - 180000),
-          isHost: false
-        }
-      ];
-    }
+    // Add some demo chat messages
+    this.mockChatHistory = [
+      {
+        id: 1,
+        username: 'DemoUser1',
+        message: 'Welcome to the demo room! 🎤',
+        timestamp: new Date(Date.now() - 300000),
+        isHost: false
+      },
+      {
+        id: 2,
+        username: 'DemoUser2',
+        message: 'This is a demo of KaraCoro! Add some songs to get started.',
+        timestamp: new Date(Date.now() - 180000),
+        isHost: false
+      }
+    ];
 
     // Emit room_joined immediately for faster demo experience
     setTimeout(() => {
@@ -203,7 +203,28 @@ class MockSocketManager {
         videoState: this.videoState,
         chatHistory: this.mockChatHistory
       });
-    }, 150); // Reduced delay for faster response
+
+      // Add demo users after a delay
+      setTimeout(() => {
+        const demoUsers = [
+          {
+            username: 'DemoUser1',
+            isHost: false,
+            socketId: 'demo_user_1'
+          },
+          {
+            username: 'DemoUser2',
+            isHost: false,
+            socketId: 'demo_user_2'
+          }
+        ];
+
+        demoUsers.forEach(user => {
+          this.mockUsers.push(user);
+          this.emit('user_joined', user);
+        });
+      }, 2000);
+    }, 150);
   }
 
   private handleChatMessage(data: { message: string }) {
@@ -249,16 +270,22 @@ class MockSocketManager {
           }
         }, 1000 + Math.random() * 3000);
       }
-    }, 100); // Faster response
+    }, 100);
   }
 
   private handleAddToQueue(data: { videoUrl: string; title: string; duration: number; thumbnail: string }) {
     const currentUser = this.mockUsers.find(u => u.socketId === this.socket!.id);
     if (!currentUser) return;
 
+    const videoId = this.extractVideoId(data.videoUrl);
+    if (!videoId) {
+      this.emit('error', { message: 'Invalid YouTube URL' });
+      return;
+    }
+
     const queueItem = {
       id: Date.now(),
-      videoId: this.extractVideoId(data.videoUrl) || 'demo_video',
+      videoId,
       title: data.title,
       duration: data.duration,
       thumbnail: data.thumbnail,
@@ -269,11 +296,7 @@ class MockSocketManager {
     this.mockQueue.push(queueItem);
 
     setTimeout(() => {
-      this.emit('queue_updated', {
-        queue: this.mockQueue,
-        addedBy: currentUser.username,
-        videoTitle: queueItem.title
-      });
+      this.emit('queue_updated', { queue: this.mockQueue });
 
       // Auto-start first video if none playing
       if (!this.currentVideo && this.mockQueue.length > 0) {
@@ -303,10 +326,7 @@ class MockSocketManager {
     this.mockQueue = this.mockQueue.filter(v => v.id !== data.videoId);
 
     setTimeout(() => {
-      this.emit('queue_updated', {
-        queue: this.mockQueue,
-        removedBy: currentUser.username
-      });
+      this.emit('queue_updated', { queue: this.mockQueue });
     }, 100);
   }
 

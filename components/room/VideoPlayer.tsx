@@ -247,18 +247,6 @@ export function VideoPlayer({
             event.target.playVideo();
           }, 1000);
         }
-      } else if (isHost) {
-        // Auto-start video after 2 seconds for host
-        autoplayTimeoutRef.current = setTimeout(() => {
-          try {
-            event.target.playVideo();
-            const currentTime = event.target.getCurrentTime() || 0;
-            onVideoStateChange(true, currentTime, 'autoplay');
-            toast.success('Video started automatically');
-          } catch (error) {
-            console.error('Error auto-starting video:', error);
-          }
-        }, 2000);
       }
 
       toast.success('Video loaded successfully');

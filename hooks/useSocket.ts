@@ -95,13 +95,19 @@ export const useSocket = () => {
         } else {
           trackKaraokeEvent('socket_connected', { type: 'real' });
         }
+
+        // Setup event listeners
+        setupSocketListeners(socket);
+        
       } catch (error) {
         envLog.error('Failed to initialize socket:', error);
         trackError(error as Error, { context: 'socket_initialization' });
       }
+    };
 
-      const socket = socketRef.current;
-      if (!socket) return;
+    const setupSocketListeners = (socket: Socket | MockSocket) => {
+      // Clear any existing listeners first
+      socket.removeAllListeners();
 
       // Connection events
       socket.on('connect', () => {
@@ -124,17 +130,17 @@ export const useSocket = () => {
           roomId: data.roomId,
           username: data.username,
           isHost: data.isHost,
-          users: data.users,
-          queue: data.queue,
-          currentVideo: data.currentVideo,
-          videoState: data.videoState,
-          chatHistory: data.chatHistory
+          users: data.users || [],
+          queue: data.queue || [],
+          currentVideo: data.currentVideo || null,
+          videoState: data.videoState || { isPlaying: false, currentTime: 0, lastUpdate: 0 },
+          chatHistory: data.chatHistory || []
         }));
         
         trackKaraokeEvent('room_joined', {
           roomId: data.roomId,
           isHost: data.isHost,
-          userCount: data.users.length,
+          userCount: data.users?.length || 0,
           isDemoMode: roomState.isDemoMode
         });
       });
@@ -142,6 +148,7 @@ export const useSocket = () => {
       socket.on('user_joined', (data) => {
         envLog.info('User joined:', data);
         setRoomState(prev => {
+          // Check if user already exists to prevent duplicates
           const userExists = prev.users.some(u => u.socketId === data.socketId);
           if (userExists) return prev;
           
@@ -158,7 +165,7 @@ export const useSocket = () => {
         envLog.info('User left:', data);
         setRoomState(prev => ({
           ...prev,
-          users: prev.users.filter(user => user.username !== data.username)
+          users: prev.users.filter(user => user.socketId !== data.socketId)
         }));
         
         trackKaraokeEvent('user_left_room', { username: data.username });
@@ -195,6 +202,7 @@ export const useSocket = () => {
       socket.on('chat_message', (message) => {
         envLog.debug('Chat message received:', message);
         setRoomState(prev => {
+          // Check if message already exists to prevent duplicates
           const messageExists = prev.chatHistory.some(m => m.id === message.id);
           if (messageExists) {
             return prev;
@@ -211,7 +219,7 @@ export const useSocket = () => {
         envLog.debug('Queue updated:', data);
         setRoomState(prev => ({
           ...prev,
-          queue: data.queue
+          queue: data.queue || []
         }));
       });
 
@@ -220,14 +228,14 @@ export const useSocket = () => {
         envLog.debug('Video changed:', data);
         setRoomState(prev => ({
           ...prev,
-          currentVideo: data.video,
-          queue: data.queue,
-          videoState: data.videoState
+          currentVideo: data.video || null,
+          queue: data.queue || [],
+          videoState: data.videoState || { isPlaying: false, currentTime: 0, lastUpdate: 0 }
         }));
         
         trackKaraokeEvent('video_changed', { 
           videoTitle: data.video?.title,
-          queueLength: data.queue.length
+          queueLength: data.queue?.length || 0
         });
       });
 
@@ -247,17 +255,18 @@ export const useSocket = () => {
         setRoomState(prev => ({
           ...prev,
           currentVideo: null,
-          queue: data.queue,
-          videoState: data.videoState
+          queue: data.queue || [],
+          videoState: data.videoState || { isPlaying: false, currentTime: 0, lastUpdate: 0 }
         }));
         
-        trackKaraokeEvent('video_ended', { queueLength: data.queue.length });
+        trackKaraokeEvent('video_ended', { queueLength: data.queue?.length || 0 });
       });
 
       // Error handling
       socket.on('error', (error) => {
         envLog.error('Socket error:', error);
         trackError(new Error(error.message || 'Socket error'), { context: 'socket_event' });
+        toast.error(error.message || 'Socket error occurred');
       });
     };
 

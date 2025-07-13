@@ -89,7 +89,11 @@ io.on('connection', (socket) => {
         if (oldRoom) {
           oldRoom.users.delete(socket.id);
           socket.leave(existingUser.roomId);
-          socket.to(existingUser.roomId).emit('user_left', existingUser);
+          socket.to(existingUser.roomId).emit('user_left', {
+            username: existingUser.username,
+            isHost: existingUser.isHost,
+            socketId: socket.id
+          });
         }
       }
 
@@ -367,7 +371,11 @@ io.on('connection', (socket) => {
       const room = rooms.get(user.roomId);
       if (room) {
         room.users.delete(socket.id);
-        socket.to(user.roomId).emit('user_left', user);
+        socket.to(user.roomId).emit('user_left', {
+          username: user.username,
+          isHost: user.isHost,
+          socketId: socket.id
+        });
         console.log(`User ${user.username} left room ${user.roomId}. Room now has ${room.users.size} users.`);
 
         // Transfer host if needed
