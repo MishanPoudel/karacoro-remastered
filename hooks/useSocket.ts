@@ -107,7 +107,9 @@ export const useSocket = () => {
 
     const setupSocketListeners = (socket: Socket | MockSocket) => {
       // Clear any existing listeners first
-      socket.removeAllListeners();
+      if (typeof (socket as any).removeAllListeners === 'function') {
+        (socket as any).removeAllListeners();
+      }
 
       // Connection events
       socket.on('connect', () => {
@@ -284,7 +286,7 @@ export const useSocket = () => {
         }
       }
     };
-  }, []);
+  }, [roomState.isDemoMode]);
 
   const joinRoom = (roomId: string, username: string) => {
     if (socketRef.current) {
