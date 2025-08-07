@@ -84,20 +84,29 @@ io.on('connection', (socket) => {
         return;
       }
       
-      // Remove user from any existing room first
+      // Check if user is already in this room
       const existingUser = users.get(socket.id);
-      if (existingUser) {
-        const oldRoom = rooms.get(existingUser.roomId);
-        if (oldRoom) {
-          oldRoom.users.delete(socket.id);
-          socket.leave(existingUser.roomId);
-          socket.to(existingUser.roomId).emit('user_left', {
+      if (existingUser && existingUser.roomId === roomId) {
+        console.log(`👤 User ${username} already in room ${roomId}, updating state`);
+        // User is already in the room, just update the room state
+        const room = rooms.get(roomId);
+        if (room) {
+          socket.emit('room_joined', {
+            roomId,
             username: existingUser.username,
             isHost: existingUser.isHost,
-            socketId: socket.id
+            users: Array.from(room.users.values()).map(u => ({
+              username: u.username,
+              isHost: u.isHost,
+              socketId: u.socketId
+            })),
+            queue: room.queue,
+            currentVideo: room.currentVideo,
+            videoState: room.videoState,
+            chatHistory: room.chatHistory.slice(-50)
           });
-          console.log(`👋 User ${existingUser.username} left room ${existingUser.roomId}`);
         }
+        return;
       }
 
       // Create room if doesn't exist

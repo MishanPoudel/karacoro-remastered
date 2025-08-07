@@ -46,7 +46,22 @@ export default function RoomPage() {
     }
   }, [roomState.roomId, roomState.username]);
 
+  // Prevent page refresh/navigation from disconnecting
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'Are you sure you want to leave the karaoke room?';
+      return 'Are you sure you want to leave the karaoke room?';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
   const handleJoinRoom = (username: string) => {
+    console.log('🎯 Joining room:', roomId, 'as:', username);
     joinRoom(roomId, username);
   };
 

@@ -101,10 +101,12 @@ export const useSocket = () => {
     };
 
     const setupSocketListeners = (socket: Socket | MockSocket) => {
-      // Clear any existing listeners first
-      if (typeof (socket as any).removeAllListeners === 'function') {
-        (socket as any).removeAllListeners();
+      // Don't remove all listeners - this can cause disconnection
+      // Instead, check if listeners are already set up
+      if ((socket as any)._listenersSetup) {
+        return;
       }
+      (socket as any)._listenersSetup = true;
 
       // Connection events
       socket.on('connect', () => {
@@ -117,6 +119,17 @@ export const useSocket = () => {
         envLog.info('Socket disconnected:', reason);
         setRoomState(prev => ({ ...prev, connected: false }));
         trackKaraokeEvent('socket_disconnected', { reason });
+        
+        // Don't auto-reconnect if it was a manual disconnect
+        if (reason !== 'io client disconnect' && reason !== 'client namespace disconnect') {
+          // Try to reconnect after a delay
+          setTimeout(() => {
+            if (socketRef.current && !socketRef.current.connected) {
+              envLog.info('Attempting to reconnect...');
+              socketRef.current.connect();
+            }
+          }, 2000);
+        }
       });
 
       socket.on('connect_error', (error) => {
@@ -274,18 +287,10 @@ export const useSocket = () => {
     initializeSocket();
 
     return () => {
-      if (socketRef.current) {
-        if ('disconnect' in socketRef.current) {
-          socketRef.current.disconnect();
-        }
-        socketRef.current = null;
-        
-        if (typeof window !== 'undefined') {
-          delete (window as any).__KARAOKE_SOCKET__;
-        }
-      }
+      // Don't disconnect on component unmount unless we're actually leaving
+      // This prevents auto-disconnects when the component re-renders
     };
-  }, []);
+  }, []); // Empty dependency array to prevent re-initialization
 
   const joinRoom = (roomId: string, username: string) => {
     if (socketRef.current) {

@@ -61,12 +61,11 @@ class SocketManager {
         transports: ['websocket', 'polling'],
         timeout: this.connectionTimeout,
         forceNew: true,
-        reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 1000,
+        reconnection: false, // Disable auto-reconnection to prevent conflicts
+        reconnectionAttempts: 0,
         autoConnect: true,
         upgrade: true,
-        rememberUpgrade: false
+        rememberUpgrade: true
       });
 
       const connectionResult = await Promise.race([
@@ -91,7 +90,7 @@ class SocketManager {
 
           const disconnectHandler = (reason: string) => {
             console.warn('❌ Socket disconnected during connection:', reason);
-            if (reason === 'io server disconnect' || reason === 'io client disconnect') {
+            if (reason === 'io server disconnect' || reason === 'io client disconnect' || reason === 'client namespace disconnect') {
               return;
             }
             realSocket.off('connect', connectHandler);
@@ -106,7 +105,9 @@ class SocketManager {
         }),
         new Promise<null>((_, reject) => {
           setTimeout(() => {
-            realSocket.disconnect();
+            if (realSocket && realSocket.connected) {
+              realSocket.disconnect();
+            }
             reject(new Error('Socket connection timeout'));
           }, this.connectionTimeout);
         })

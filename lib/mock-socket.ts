@@ -61,7 +61,8 @@ class MockSocketManager {
       },
 
       removeAllListeners: () => {
-        this.eventHandlers.clear();
+        // Don't clear all listeners in mock mode as it can cause issues
+        console.log('Mock socket: removeAllListeners called (ignored)');
       },
 
       emit: (event: string, data?: any) => {
@@ -81,9 +82,8 @@ class MockSocketManager {
       to: (room: string) => this.socket!,
 
       disconnect: () => {
-        this.isConnected = false;
-        this.socket!.connected = false;
-        this.emit('disconnect', 'client disconnect');
+        console.log('Mock socket: disconnect called (ignored to prevent auto-disconnect)');
+        // Don't actually disconnect in mock mode unless explicitly requested
       }
     };
 
