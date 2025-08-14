@@ -1,8 +1,9 @@
+"use client";
 import { useEffect, useRef, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { CONFIG, envLog } from '@/lib/config';
-import { trackKaraokeEvent, trackError } from '@/lib/analytics';
-import { MockSocket } from '@/lib/mock-socket';
+import { CONFIG, envLog } from '../lib/config';
+import { trackKaraokeEvent, trackError } from '../lib/analytics';
+import { MockSocket } from '../lib/mock-socket';
 import { toast } from 'sonner';
 
 export interface User {
@@ -65,13 +66,17 @@ export const useSocket = () => {
   });
 
   useEffect(() => {
+    let isMounted = true;
+
     const initializeSocket = async () => {
       try {
         envLog.info('Initializing socket connection');
         
         // Dynamic import to avoid SSR issues
-        const { default: SocketManager } = await import('@/lib/socket-manager');
+        const { default: SocketManager } = await import('../lib/socket-manager');
         const socketManager = SocketManager.getInstance();
+        
+        if (!isMounted) return;
         
         const socket = await socketManager.connect();
         socketRef.current = socket;
@@ -94,6 +99,7 @@ export const useSocket = () => {
         setupSocketListeners(socket);
         
       } catch (error) {
+        if (!isMounted) return;
         envLog.error('Failed to initialize socket:', error);
         trackError(error as Error, { context: 'socket_initialization' });
         setRoomState(prev => ({ ...prev, connected: false }));
@@ -115,20 +121,50 @@ export const useSocket = () => {
         trackKaraokeEvent('socket_connection_established');
       });
 
-      socket.on('disconnect', (reason) => {
+      socket.on('disconnect', (reason: string) => {
         envLog.info('Socket disconnected:', reason);
-        setRoomState(prev => ({ ...prev, connected: false }));
+        const wasManualDisconnect = ['io client disconnect', 'client namespace disconnect', 'transport close'].includes(reason);
+        
+        setRoomState(prev => ({ 
+          ...prev, 
+          connected: false,
+          // Only clear room state if it wasn't a temporary disconnect
+          ...(wasManualDisconnect ? {
+            users: [],
+            queue: [],
+            currentVideo: null,
+            videoState: { isPlaying: false, currentTime: 0, lastUpdate: 0 }
+          } : {})
+        }));
+        
         trackKaraokeEvent('socket_disconnected', { reason });
         
-        // Don't auto-reconnect if it was a manual disconnect
-        if (reason !== 'io client disconnect' && reason !== 'client namespace disconnect') {
+        // Attempt to reconnect unless it was a manual disconnect
+        if (!wasManualDisconnect && socketRef.current) {
+          const socket = socketRef.current;
+          const currentRoomId = roomState.roomId;
+          const currentUsername = roomState.username;
+          
           // Try to reconnect after a delay
           setTimeout(() => {
-            if (socketRef.current && !socketRef.current.connected) {
+            if (!socket.connected && 'connect' in socket) {
               envLog.info('Attempting to reconnect...');
-              socketRef.current.connect();
+              socket.connect();
+              
+              // Re-join room if we were in one
+              if (currentRoomId && currentUsername) {
+                setTimeout(() => {
+                  if (socket.connected) {
+                    envLog.info('Rejoining room after reconnect');
+                    socket.emit('join_room', { 
+                      roomId: currentRoomId, 
+                      username: currentUsername 
+                    });
+                  }
+                }, 1000);
+              }
             }
-          }, 2000);
+          }, 1000);
         }
       });
 
@@ -287,10 +323,11 @@ export const useSocket = () => {
     initializeSocket();
 
     return () => {
-      // Don't disconnect on component unmount unless we're actually leaving
-      // This prevents auto-disconnects when the component re-renders
+      isMounted = false;
+      // Only disconnect on actual unmount
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     };
-  }, []); // Empty dependency array to prevent re-initialization
+  }, [roomState.roomId, roomState.username]); // Only run on mount/unmount
 
   const joinRoom = (roomId: string, username: string) => {
     if (socketRef.current) {

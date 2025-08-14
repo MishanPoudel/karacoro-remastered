@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from '@/lib/error-boundary';
+import { SocketProvider } from '@/hooks/SocketProvider';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -58,19 +59,21 @@ export default function RootLayout({
       </head>
       <body className={inter.className} suppressHydrationWarning>
         <ErrorBoundary>
-          {children}
-          <Toaster 
-            position="bottom-left"
-            toastOptions={{
-              style: {
-                background: '#1f2937',
-                color: '#ffffff',
-                border: '1px solid #ef4444',
-              },
-            }}
-            closeButton
-            richColors
-          />
+          <SocketProvider>
+            {children}
+            <Toaster 
+              position="bottom-left"
+              toastOptions={{
+                style: {
+                  background: '#1f2937',
+                  color: '#ffffff',
+                  border: '1px solid #ef4444',
+                },
+              }}
+              closeButton
+              richColors
+            />
+          </SocketProvider>
         </ErrorBoundary>
       </body>
     </html>
