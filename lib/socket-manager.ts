@@ -60,8 +60,8 @@ class SocketManager {
       const realSocket = io(socketUrl, {
         transports: ['websocket', 'polling'],
         timeout: this.connectionTimeout,
-        forceNew: false,
-        reconnection: true,
+        forceNew: true,
+        reconnection: false,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         reconnectionDelayMax: 5000,

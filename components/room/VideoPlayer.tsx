@@ -96,7 +96,7 @@ export function VideoPlayer({
     height: '100%',
     width: '100%',
     playerVars: {
-      autoplay: 0,
+      autoplay: 1,
       controls: isHost ? 1 : 0,
       disablekb: !isHost ? 1 : 0,
       fs: 1,
@@ -230,13 +230,17 @@ export function VideoPlayer({
     try {
       event.target.setVolume(volume);
       
-      if (!isHost && videoState.currentTime > 0) {
-        event.target.seekTo(videoState.currentTime, true);
-        if (videoState.isPlaying) {
-          setTimeout(() => {
+      // Always start the video when ready
+      if (currentVideo) {
+        setTimeout(() => {
+          if (isHost) {
             event.target.playVideo();
-          }, 1000);
-        }
+            onVideoStateChange(true, 0, 'play');
+          } else if (videoState.isPlaying) {
+            event.target.seekTo(videoState.currentTime, true);
+            event.target.playVideo();
+          }
+        }, 500);
       }
 
       toast.success('Video loaded successfully');
