@@ -7,7 +7,7 @@
   "author": "Karaoke Party Team",
   "license": "MIT",
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"next dev\" \"node server/index.js\"",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",

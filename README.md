@@ -63,11 +63,11 @@ npm install
 ### 3. Run the Application
 
 ```bash
-# Development mode
+# Development mode (starts both frontend and backend)
 npm run dev
 ```
 
-This will start both the Next.js frontend (port 3000) and the Socket.io backend (port 3001).
+This will start both the Next.js frontend (port 3000) and the Socket.io backend (port 3001) concurrently.
 
 ## Production Deployment
 
