@@ -34,12 +34,12 @@ class SocketManager {
     // WebContainer detection
     if (currentUrl.hostname.includes('webcontainer-api.io')) {
       const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
-      return `${currentUrl.protocol}//${socketHostname}`;
+      return `http://${socketHostname}`;
     }
     
     // Local development
     if (currentUrl.hostname === 'localhost' || currentUrl.hostname === '127.0.0.1') {
-      return `${currentUrl.protocol}//localhost:3001`;
+      return `http://localhost:3001`;
     }
     
     // Production fallback
