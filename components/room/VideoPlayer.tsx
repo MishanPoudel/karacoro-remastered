@@ -230,15 +230,15 @@ export function VideoPlayer({
     try {
       event.target.setVolume(volume);
       
-      // Always start the video when ready
+      // Start video if it should be playing
       if (currentVideo) {
         setTimeout(() => {
-          if (isHost) {
-            event.target.playVideo();
-            onVideoStateChange(true, 0, 'play');
-          } else if (videoState.isPlaying) {
+          if (videoState.isPlaying) {
             event.target.seekTo(videoState.currentTime, true);
             event.target.playVideo();
+          } else if (isHost) {
+            event.target.playVideo();
+            onVideoStateChange(true, 0, 'play');
           }
         }, 500);
       }

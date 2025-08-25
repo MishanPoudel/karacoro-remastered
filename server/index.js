@@ -1,36 +1,18 @@
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
-const cors = require('cors');
 
 const app = express();
 const server = createServer(app);
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      "http://localhost:3000", 
-      "https://localhost:3000",
-      /\.webcontainer-api\.io$/,
-      /\.local-credentialless\.webcontainer-api\.io$/
-    ];
-    
-    const isAllowed = allowedOrigins.some(allowed => {
-      if (typeof allowed === 'string') {
-        return origin === allowed;
-      }
-      return allowed.test(origin);
-    });
-    
     callback(null, true);
   },
   credentials: true,
   methods: ["GET", "POST"]
 };
 
-app.use(cors(corsOptions));
 app.use(express.json());
 
 const io = new Server(server, {
@@ -38,9 +20,7 @@ const io = new Server(server, {
   transports: ['websocket', 'polling'],
   allowEIO3: true,
   pingTimeout: 60000,
-  pingInterval: 25000,
-  upgradeTimeout: 30000,
-  maxHttpBufferSize: 1e6
+  pingInterval: 25000
 });
 
 const rooms = new Map();
@@ -208,7 +188,7 @@ io.on('connection', (socket) => {
         const nextVideo = room.queue.shift();
         if (nextVideo) {
           room.currentVideo = nextVideo;
-          room.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
+          room.videoState = { isPlaying: true, currentTime: 0, lastUpdate: Date.now() };
 
           io.to(user.roomId).emit('video_changed', {
             video: room.currentVideo,
@@ -260,7 +240,7 @@ io.on('connection', (socket) => {
       if (room.queue.length > 0) {
         const nextVideo = room.queue.shift();
         room.currentVideo = nextVideo;
-        room.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
+        room.videoState = { isPlaying: true, currentTime: 0, lastUpdate: Date.now() };
 
         io.to(user.roomId).emit('video_changed', {
           video: room.currentVideo,
@@ -295,7 +275,7 @@ io.on('connection', (socket) => {
       if (room.queue.length > 0) {
         const nextVideo = room.queue.shift();
         room.currentVideo = nextVideo;
-        room.videoState = { isPlaying: false, currentTime: 0, lastUpdate: Date.now() };
+        room.videoState = { isPlaying: true, currentTime: 0, lastUpdate: Date.now() };
 
         io.to(user.roomId).emit('video_changed', {
           video: room.currentVideo,
@@ -389,11 +369,6 @@ app.get('/health', (req, res) => {
     },
     roomDetails
   });
-});
-
-app.use((err, req, res, next) => {
-  console.error('Express error:', err);
-  res.status(500).json({ error: 'Internal server error' });
 });
 
 const PORT = process.env.PORT || 3001;

@@ -1,9 +1,8 @@
-"use client";
 import { useEffect, useRef, useState } from 'react';
 import { Socket } from 'socket.io-client';
-import { CONFIG, envLog } from '../lib/config';
-import { trackKaraokeEvent, trackError } from '../lib/analytics';
-import { MockSocket } from '../lib/mock-socket';
+import { CONFIG, envLog } from '@/lib/config';
+import { trackKaraokeEvent, trackError } from '@/lib/analytics';
+import { MockSocket } from '@/lib/mock-socket';
 import { toast } from 'sonner';
 
 export interface User {
@@ -68,20 +67,14 @@ export const useSocket = () => {
   useEffect(() => {
     const initializeSocket = async () => {
       try {
-        envLog.info('Initializing socket connection');
-        
-        const { default: SocketManager } = await import('../lib/socket-manager');
+        const { default: SocketManager } = await import('@/lib/socket-manager');
         const socketManager = SocketManager.getInstance();
         
         const socket = await socketManager.connect();
         socketRef.current = socket;
         
-        if (typeof window !== 'undefined') {
-          (window as any).__KARAOKE_SOCKET__ = socket;
-        }
-        
         const isDemoMode = socketManager.isInDemoMode();
-        setRoomState(prev => ({ ...prev, isDemoMode, connected: socketManager.isConnected() }));
+        setRoomState(prev => ({ ...prev, isDemoMode }));
         
         setupSocketListeners(socket);
         
@@ -93,17 +86,14 @@ export const useSocket = () => {
 
     const setupSocketListeners = (socket: Socket | MockSocket) => {
       socket.on('connect', () => {
-        envLog.info('Socket connected');
         setRoomState(prev => ({ ...prev, connected: true }));
       });
 
-      socket.on('disconnect', (reason: string) => {
-        envLog.info('Socket disconnected:', reason);
+      socket.on('disconnect', () => {
         setRoomState(prev => ({ ...prev, connected: false }));
       });
 
       socket.on('room_joined', (data) => {
-        envLog.info('Joined room:', data);
         setRoomState(prev => ({
           ...prev,
           roomId: data.roomId,
@@ -165,7 +155,6 @@ export const useSocket = () => {
       });
 
       socket.on('error', (error) => {
-        envLog.error('Socket error:', error);
         toast.error(error.message || 'Socket error occurred');
       });
     };

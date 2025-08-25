@@ -6,9 +6,6 @@ class SocketManager {
   private socket: Socket | MockSocket | null = null;
   private static instance: SocketManager;
   private isUsingMock: boolean = false;
-  private connectionAttempts: number = 0;
-  private maxRetries: number = 3;
-  private connectionTimeout: number = 5000;
 
   private constructor() {}
 
@@ -26,124 +23,77 @@ class SocketManager {
 
     const currentUrl = window.location;
     
-    // Check for environment variable first
     if (process.env.NEXT_PUBLIC_SOCKET_URL) {
       return process.env.NEXT_PUBLIC_SOCKET_URL;
     }
     
-    // WebContainer detection
     if (currentUrl.hostname.includes('webcontainer-api.io')) {
       const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
       return `http://${socketHostname}`;
     }
     
-    // Local development
     if (currentUrl.hostname === 'localhost' || currentUrl.hostname === '127.0.0.1') {
       return `http://localhost:3001`;
     }
     
-    // Production fallback
     return `${currentUrl.protocol}//${currentUrl.hostname}:3001`;
   }
 
   async connect(): Promise<Socket | MockSocket> {
-    if (this.socket && 'connected' in this.socket && this.socket.connected) {
+    if (this.socket) {
       return this.socket;
     }
 
-    this.connectionAttempts++;
-
     try {
       const socketUrl = this.getSocketUrl();
-      console.log(`🔌 Attempting to connect to socket server (attempt ${this.connectionAttempts}/${this.maxRetries}):`, socketUrl);
+      console.log('Connecting to socket server:', socketUrl);
       
       const realSocket = io(socketUrl, {
         transports: ['websocket', 'polling'],
-        timeout: this.connectionTimeout,
-        forceNew: true,
+        timeout: 5000,
         reconnection: false,
-        reconnectionAttempts: 5,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        autoConnect: true,
-        upgrade: true,
-        rememberUpgrade: true
+        autoConnect: true
       });
 
       const connectionResult = await Promise.race([
         new Promise<Socket>((resolve, reject) => {
           const connectHandler = () => {
-            console.log('✅ Connected to real socket server');
+            console.log('Connected to real socket server');
             realSocket.off('connect', connectHandler);
             realSocket.off('connect_error', errorHandler);
-            realSocket.off('disconnect', disconnectHandler);
             this.isUsingMock = false;
-            this.connectionAttempts = 0;
             resolve(realSocket);
           };
 
           const errorHandler = (error: any) => {
-            console.warn('❌ Socket connection error:', error);
+            console.warn('Socket connection error:', error);
             realSocket.off('connect', connectHandler);
             realSocket.off('connect_error', errorHandler);
-            realSocket.off('disconnect', disconnectHandler);
             reject(error);
-          };
-
-          const disconnectHandler = (reason: string) => {
-            console.warn('❌ Socket disconnected during connection:', reason);
-            if (reason === 'io server disconnect' || reason === 'io client disconnect' || reason === 'client namespace disconnect') {
-              return;
-            }
-            realSocket.off('connect', connectHandler);
-            realSocket.off('connect_error', errorHandler);
-            realSocket.off('disconnect', disconnectHandler);
-            reject(new Error(`Socket disconnected: ${reason}`));
           };
 
           realSocket.on('connect', connectHandler);
           realSocket.on('connect_error', errorHandler);
-          realSocket.on('disconnect', disconnectHandler);
         }),
         new Promise<null>((_, reject) => {
           setTimeout(() => {
-            if (realSocket && realSocket.connected) {
-              realSocket.disconnect();
-            }
+            realSocket.disconnect();
             reject(new Error('Socket connection timeout'));
-          }, this.connectionTimeout);
+          }, 5000);
         })
       ]);
 
       this.socket = connectionResult;
-      
-      if (typeof window !== 'undefined') {
-        (window as any).__KARAOKE_SOCKET__ = this.socket;
-      }
-
       return this.socket;
 
     } catch (error) {
-      console.warn(`❌ Failed to connect to socket server (attempt ${this.connectionAttempts}/${this.maxRetries}):`, error);
-      
-      if (this.connectionAttempts < this.maxRetries) {
-        console.log(`🔄 Retrying connection in 2 seconds...`);
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        return this.connect();
-      }
-
-      console.log('🎭 All connection attempts failed, switching to demo mode');
+      console.log('Switching to demo mode');
       const mockSocketManager = MockSocketManager.getInstance();
       this.socket = mockSocketManager.createMockSocket();
       this.isUsingMock = true;
-      this.connectionAttempts = 0;
-
-      if (typeof window !== 'undefined') {
-        (window as any).__KARAOKE_SOCKET__ = this.socket;
-      }
 
       toast.info('🎭 Demo Mode Active', {
-        description: 'Server unavailable. Using demo mode with simulated features.',
+        description: 'Server unavailable. Using demo mode.',
         duration: 4000,
       });
 
@@ -161,16 +111,7 @@ class SocketManager {
       }
       this.socket = null;
       this.isUsingMock = false;
-      this.connectionAttempts = 0;
-      
-      if (typeof window !== 'undefined') {
-        delete (window as any).__KARAOKE_SOCKET__;
-      }
     }
-  }
-
-  getSocket(): Socket | MockSocket | null {
-    return this.socket;
   }
 
   isInDemoMode(): boolean {
