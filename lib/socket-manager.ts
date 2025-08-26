@@ -51,8 +51,11 @@ class SocketManager {
       const realSocket = io(socketUrl, {
         transports: ['websocket', 'polling'],
         timeout: 5000,
-        reconnection: false,
+        reconnection: true,
+        reconnectionAttempts: 3,
+        reconnectionDelay: 1000,
         autoConnect: true
+        forceNew: false
       });
 
       const connectionResult = await Promise.race([
@@ -82,7 +85,6 @@ class SocketManager {
           }, 5000);
         })
       ]);
-
       this.socket = connectionResult;
       return this.socket;
 
@@ -102,16 +104,7 @@ class SocketManager {
   }
 
   disconnect(): void {
-    if (this.socket) {
-      if (this.isUsingMock) {
-        const mockSocketManager = MockSocketManager.getInstance();
-        mockSocketManager.disconnect();
-      } else {
-        (this.socket as Socket).disconnect();
-      }
-      this.socket = null;
-      this.isUsingMock = false;
-    }
+    // Don't disconnect automatically
   }
 
   isInDemoMode(): boolean {

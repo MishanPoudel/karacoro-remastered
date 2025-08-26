@@ -301,6 +301,13 @@ io.on('connection', (socket) => {
   socket.on('disconnect', (reason) => {
     try {
       console.log('🔌 User disconnected:', socket.id, 'Reason:', reason);
+      
+      // Only handle actual disconnects, not namespace switches
+      if (reason === 'client namespace disconnect') {
+        console.log('⚠️ Client namespace disconnect - ignoring cleanup');
+        return;
+      }
+      
       const user = users.get(socket.id);
       if (!user) return;
 

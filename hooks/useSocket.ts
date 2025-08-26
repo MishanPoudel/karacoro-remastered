@@ -85,6 +85,11 @@ export const useSocket = () => {
     };
 
     const setupSocketListeners = (socket: Socket | MockSocket) => {
+      // Clear any existing listeners first
+      if ('removeAllListeners' in socket) {
+        socket.removeAllListeners();
+      }
+
       socket.on('connect', () => {
         setRoomState(prev => ({ ...prev, connected: true }));
       });
@@ -160,6 +165,8 @@ export const useSocket = () => {
     };
 
     initializeSocket();
+
+    // No cleanup function to prevent disconnects
   }, []);
 
   const joinRoom = (roomId: string, username: string) => {
