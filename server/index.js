@@ -299,55 +299,50 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', (reason) => {
-    try {
-      console.log('🔌 User disconnected:', socket.id, 'Reason:', reason);
-      
-      // Only handle actual disconnects, not namespace switches
-      if (reason === 'client namespace disconnect') {
-        console.log('⚠️ Client namespace disconnect - ignoring cleanup');
-        return;
-      }
-      
-      const user = users.get(socket.id);
-      if (!user) return;
-
-      const room = rooms.get(user.roomId);
-      if (room) {
-        room.users.delete(socket.id);
-        
-        socket.to(user.roomId).emit('user_left', {
-          username: user.username,
-          isHost: user.isHost,
-          socketId: socket.id
-        });
-        
-        console.log(`👋 User ${user.username} left room ${user.roomId}. Room now has ${room.users.size} users.`);
-
-        if (user.isHost && room.users.size > 0) {
-          const newHostEntry = Array.from(room.users.entries())[0];
-          const [newHostSocketId, newHostUser] = newHostEntry;
-          
-          newHostUser.isHost = true;
-          users.set(newHostSocketId, newHostUser);
-          room.users.set(newHostSocketId, newHostUser);
-          
-          io.to(user.roomId).emit('host_changed', {
-            newHost: newHostUser.username,
-            socketId: newHostSocketId
-          });
-          console.log(`👑 Host transferred to ${newHostUser.username} in room ${user.roomId}`);
-        }
-
-        if (room.users.size === 0) {
-          rooms.delete(user.roomId);
-          console.log(`🗑️ Deleted empty room ${user.roomId}`);
-        }
-      }
-
-      users.delete(socket.id);
-    } catch (error) {
-      console.error('❌ Error handling disconnect:', error);
+    // Ignore client namespace disconnects
+    if (reason === 'client namespace disconnect') {
+      return;
     }
+    
+    console.log('🔌 User disconnected:', socket.id, 'Reason:', reason);
+    
+    const user = users.get(socket.id);
+    if (!user) return;
+
+    const room = rooms.get(user.roomId);
+    if (room) {
+      room.users.delete(socket.id);
+      
+      socket.to(user.roomId).emit('user_left', {
+        username: user.username,
+        isHost: user.isHost,
+        socketId: socket.id
+      });
+      
+      console.log(`👋 User ${user.username} left room ${user.roomId}. Room now has ${room.users.size} users.`);
+
+      if (user.isHost && room.users.size > 0) {
+        const newHostEntry = Array.from(room.users.entries())[0];
+        const [newHostSocketId, newHostUser] = newHostEntry;
+        
+        newHostUser.isHost = true;
+        users.set(newHostSocketId, newHostUser);
+        room.users.set(newHostSocketId, newHostUser);
+        
+        io.to(user.roomId).emit('host_changed', {
+          newHost: newHostUser.username,
+          socketId: newHostSocketId
+        });
+        console.log(`👑 Host transferred to ${newHostUser.username} in room ${user.roomId}`);
+      }
+
+      if (room.users.size === 0) {
+        rooms.delete(user.roomId);
+        console.log(`🗑️ Deleted empty room ${user.roomId}`);
+      }
+    }
+
+    users.delete(socket.id);
   });
 
   socket.on('error', (error) => {
