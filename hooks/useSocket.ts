@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Socket } from 'socket.io-client';
-import { CONFIG, envLog } from '@/lib/config';
-import { trackKaraokeEvent, trackError } from '@/lib/analytics';
-import { MockSocket } from '@/lib/mock-socket';
-import { toast } from 'sonner';
+import { io, Socket } from 'socket.io-client';
 
 export interface User {
   username: string;
@@ -46,11 +42,10 @@ export interface RoomState {
   videoState: VideoState;
   chatHistory: ChatMessage[];
   connected: boolean;
-  isDemoMode: boolean;
 }
 
 export const useSocket = () => {
-  const socketRef = useRef<Socket | MockSocket | null>(null);
+  const socketRef = useRef<Socket | null>(null);
   const [roomState, setRoomState] = useState<RoomState>({
     roomId: '',
     username: '',
@@ -61,123 +56,118 @@ export const useSocket = () => {
     videoState: { isPlaying: false, currentTime: 0, lastUpdate: 0 },
     chatHistory: [],
     connected: false,
-    isDemoMode: false
   });
 
   useEffect(() => {
-    const initializeSocket = async () => {
-      try {
-        const { default: SocketManager } = await import('@/lib/socket-manager');
-        const socketManager = SocketManager.getInstance();
-        
-        const socket = await socketManager.connect();
-        socketRef.current = socket;
-        
-        const isDemoMode = socketManager.isInDemoMode();
-        setRoomState(prev => ({ ...prev, isDemoMode }));
-        
-        setupSocketListeners(socket);
-        
-      } catch (error) {
-        envLog.error('Failed to initialize socket:', error);
-        setRoomState(prev => ({ ...prev, connected: false }));
+    if (socketRef.current) return;
+
+    const getSocketUrl = () => {
+      if (typeof window === 'undefined') return 'http://localhost:3001';
+      
+      const currentUrl = window.location;
+      if (currentUrl.hostname.includes('webcontainer-api.io')) {
+        const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
+        return `http://${socketHostname}`;
       }
+      return 'http://localhost:3001';
     };
 
-    const setupSocketListeners = (socket: Socket | MockSocket) => {
-      // Clear any existing listeners first
-      if ('removeAllListeners' in socket) {
-        socket.removeAllListeners();
-      }
+    const socket = io(getSocketUrl(), {
+      transports: ['websocket'],
+      upgrade: false,
+      rememberUpgrade: false,
+      autoConnect: true,
+      forceNew: true,
+      reconnection: false
+    });
 
-      socket.on('connect', () => {
-        setRoomState(prev => ({ ...prev, connected: true }));
-      });
+    socketRef.current = socket;
 
-      socket.on('disconnect', () => {
-        setRoomState(prev => ({ ...prev, connected: false }));
-      });
+    socket.on('connect', () => {
+      console.log('Socket connected:', socket.id);
+      setRoomState(prev => ({ ...prev, connected: true }));
+    });
 
-      socket.on('room_joined', (data) => {
-        setRoomState(prev => ({
-          ...prev,
-          roomId: data.roomId,
-          username: data.username,
-          isHost: data.isHost,
-          users: data.users || [],
-          queue: data.queue || [],
-          currentVideo: data.currentVideo || null,
-          videoState: data.videoState || { isPlaying: false, currentTime: 0, lastUpdate: 0 },
-          chatHistory: data.chatHistory || []
-        }));
-      });
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
+      setRoomState(prev => ({ ...prev, connected: false }));
+    });
 
-      socket.on('user_joined', (data) => {
-        setRoomState(prev => ({
-          ...prev,
-          users: [...prev.users.filter(u => u.socketId !== data.socketId), data]
-        }));
-      });
+    socket.on('room_joined', (data) => {
+      console.log('Room joined:', data);
+      setRoomState(prev => ({
+        ...prev,
+        roomId: data.roomId,
+        username: data.username,
+        isHost: data.isHost,
+        users: data.users || [],
+        queue: data.queue || [],
+        currentVideo: data.currentVideo || null,
+        videoState: data.videoState || { isPlaying: false, currentTime: 0, lastUpdate: 0 },
+        chatHistory: data.chatHistory || []
+      }));
+    });
 
-      socket.on('user_left', (data) => {
-        setRoomState(prev => ({
-          ...prev,
-          users: prev.users.filter(user => user.socketId !== data.socketId)
-        }));
-      });
+    socket.on('user_joined', (data) => {
+      setRoomState(prev => ({
+        ...prev,
+        users: [...prev.users.filter(u => u.socketId !== data.socketId), data]
+      }));
+    });
 
-      socket.on('chat_message', (message) => {
-        setRoomState(prev => ({
-          ...prev,
-          chatHistory: [...prev.chatHistory, message]
-        }));
-      });
+    socket.on('user_left', (data) => {
+      setRoomState(prev => ({
+        ...prev,
+        users: prev.users.filter(user => user.socketId !== data.socketId)
+      }));
+    });
 
-      socket.on('queue_updated', (data) => {
-        setRoomState(prev => ({
-          ...prev,
-          queue: data.queue || []
-        }));
-      });
+    socket.on('chat_message', (message) => {
+      setRoomState(prev => ({
+        ...prev,
+        chatHistory: [...prev.chatHistory, message]
+      }));
+    });
 
-      socket.on('video_changed', (data) => {
-        setRoomState(prev => ({
-          ...prev,
-          currentVideo: data.video || null,
-          queue: data.queue || [],
-          videoState: data.videoState || { isPlaying: false, currentTime: 0, lastUpdate: 0 }
-        }));
-      });
+    socket.on('queue_updated', (data) => {
+      setRoomState(prev => ({
+        ...prev,
+        queue: data.queue || []
+      }));
+    });
 
-      socket.on('video_state_sync', (videoState) => {
-        setRoomState(prev => ({
-          ...prev,
-          videoState: {
-            ...videoState,
-            lastUpdate: Date.now()
-          }
-        }));
-      });
+    socket.on('video_changed', (data) => {
+      setRoomState(prev => ({
+        ...prev,
+        currentVideo: data.video || null,
+        queue: data.queue || [],
+        videoState: data.videoState || { isPlaying: false, currentTime: 0, lastUpdate: 0 }
+      }));
+    });
 
-      socket.on('error', (error) => {
-        toast.error(error.message || 'Socket error occurred');
-      });
+    socket.on('video_state_sync', (videoState) => {
+      setRoomState(prev => ({
+        ...prev,
+        videoState: {
+          ...videoState,
+          lastUpdate: Date.now()
+        }
+      }));
+    });
+
+    socket.on('error', (error) => {
+      console.error('Socket error:', error);
+    });
+
+    return () => {
+      // Don't disconnect on cleanup
     };
-
-    initializeSocket();
-
-    // No cleanup function to prevent disconnects
   }, []);
 
   const joinRoom = (roomId: string, username: string) => {
     if (socketRef.current) {
+      console.log('Joining room:', roomId, 'as:', username);
       socketRef.current.emit('join_room', { roomId, username });
-    }
-  };
-
-  const changeUsername = (newUsername: string) => {
-    if (socketRef.current) {
-      socketRef.current.emit('change_username', { newUsername });
     }
   };
 
@@ -220,7 +210,6 @@ export const useSocket = () => {
   return {
     roomState,
     joinRoom,
-    changeUsername,
     sendChatMessage,
     addToQueue,
     removeFromQueue,
