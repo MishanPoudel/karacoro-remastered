@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, Music, Users, Mic, Star, Play, Volume2, Crown, Zap, Shield, Globe, Heart, Sparkles } from "lucide-react";
-import Link from "next/link";
 import { RoomCreator } from "@/components/room/RoomCreator";
 import { RoomJoiner } from "@/components/room/RoomJoiner";
 import { trackPageView, trackKaraokeEvent } from '@/lib/analytics';
@@ -333,7 +332,7 @@ export default function Home() {
               <Button 
                 size="lg" 
                 variant="outline"
-                className="border-white text-white hover:bg-white text-red-600 text-lg px-8 py-4 h-14 transition-all duration-300"
+                className="border-white text-red-600 hover:bg-white text-lg px-8 py-4 h-14 transition-all duration-300"
                 onClick={handleHowItWorksClick}
               >
                 Learn More

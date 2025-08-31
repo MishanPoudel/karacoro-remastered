@@ -164,10 +164,10 @@ export const useSocket = () => {
     };
   }, []);
 
-  const joinRoom = (roomId: string, username: string) => {
+  const joinRoom = (roomId: string, username: string, userId?: string) => {
     if (socketRef.current) {
-      console.log('Joining room:', roomId, 'as:', username);
-      socketRef.current.emit('join_room', { roomId, username });
+      console.log('Joining room:', roomId, 'as:', username, 'userId:', userId);
+      socketRef.current.emit('join_room', { roomId, username, userId });
     }
   };
 

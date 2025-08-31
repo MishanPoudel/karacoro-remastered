@@ -91,3 +91,7 @@ export function UserPanel({ users, currentUsername, isHost }: UserPanelProps) {
     </Card>
   );
 }
+
+function onChangeUsername(arg0: string) {
+  throw new Error('Function not implemented.');
+}

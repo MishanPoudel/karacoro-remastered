@@ -100,7 +100,7 @@ export function VideoPlayer({
       controls: isHost ? 1 : 0,
       disablekb: !isHost ? 1 : 0,
       fs: 1,
-      rel: 0,
+      rel: 0, // Prevent related videos
       showinfo: 0,
       modestbranding: 1,
       playsinline: 1,
@@ -147,25 +147,31 @@ export function VideoPlayer({
         const currentPlayerTime = playerRef.current.getCurrentTime();
         const playerState = playerRef.current.getPlayerState();
         const isPlayerPlaying = playerState === 1;
-        
+
         const timeDiff = Math.abs(currentPlayerTime - videoState.currentTime);
-        const shouldSync = timeDiff > 2.0;
+        const shouldSync = timeDiff > 0.5;
 
         if (shouldSync && videoState.currentTime > 0) {
           isSeekingRef.current = true;
           playerRef.current.seekTo(videoState.currentTime, true);
           setLastSyncTime(Date.now());
-          
-          setTimeout(() => {
-            isSeekingRef.current = false;
-          }, 1000);
-        }
 
-        // Sync play/pause state
-        if (videoState.isPlaying && !isPlayerPlaying && !isBuffering) {
-          playerRef.current.playVideo();
-        } else if (!videoState.isPlaying && isPlayerPlaying) {
-          playerRef.current.pauseVideo();
+          // After seeking, always match play/pause state
+          setTimeout(() => {
+            if (videoState.isPlaying) {
+              playerRef.current.playVideo();
+            } else {
+              playerRef.current.pauseVideo();
+            }
+            isSeekingRef.current = false;
+          }, 300);
+        } else {
+          // If not seeking, still ensure play/pause is matched
+          if (videoState.isPlaying && !isPlayerPlaying && !isBuffering) {
+            playerRef.current.playVideo();
+          } else if (!videoState.isPlaying && isPlayerPlaying) {
+            playerRef.current.pauseVideo();
+          }
         }
 
         setLocalState({
@@ -183,7 +189,7 @@ export function VideoPlayer({
     }
 
     syncWithHost();
-    syncIntervalRef.current = setInterval(syncWithHost, 1000);
+    syncIntervalRef.current = setInterval(syncWithHost, 500);
 
     return () => {
       if (syncIntervalRef.current) {
@@ -210,9 +216,13 @@ export function VideoPlayer({
         const dur = playerRef.current.getDuration();
         setCurrentTime(time);
         setDuration(dur);
-        
+
         if (isHost) {
           setLocalState(prev => ({ ...prev, currentTime: time }));
+          // Only broadcast sync events when playing
+          if (localState.isPlaying) {
+            onVideoStateChange(true, time, 'sync');
+          }
         }
       } catch (error) {
         // Player might not be ready
@@ -220,7 +230,7 @@ export function VideoPlayer({
     }, 500);
 
     return () => clearInterval(interval);
-  }, [isReady, isHost]);
+  }, [isReady, isHost, onVideoStateChange, localState.isPlaying]);
 
   const onReady = async (event: any) => {
     playerRef.current = event.target;

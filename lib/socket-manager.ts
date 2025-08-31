@@ -54,7 +54,7 @@ class SocketManager {
         reconnection: true,
         reconnectionAttempts: 3,
         reconnectionDelay: 1000,
-        autoConnect: true
+        autoConnect: true,
         forceNew: false
       });
 

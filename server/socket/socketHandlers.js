@@ -19,15 +19,10 @@ class SocketHandlers {
   }
 
   // Join room handler
-  handleJoinRoom(socket, { roomId, username }) {
+  handleJoinRoom(socket, { roomId, username, userId }) {
     try {
       if (!validateUsername(username)) {
         socket.emit('error', { message: 'Username must be 2-20 characters long and contain only letters, numbers, underscores, and hyphens' });
-        return;
-      }
-
-      if (!isUsernameAvailable(username, roomId, this.rooms, socket.id)) {
-        socket.emit('error', { message: 'Username already taken in this room' });
         return;
       }
 
@@ -37,7 +32,6 @@ class SocketHandlers {
       // Create or get room
       let room = this.rooms.get(roomId);
       const isHost = !room;
-      
       if (!room) {
         room = createRoom(roomId, socket.id);
         this.rooms.set(roomId, room);
@@ -50,9 +44,29 @@ class SocketHandlers {
         return;
       }
 
-      // Create user
-      const user = createUser(socket.id, username, roomId, isHost);
-      this.users.set(socket.id, user);
+      let user;
+      // Restore user by userId if possible
+      if (userId && this.users.has(userId)) {
+        user = this.users.get(userId);
+        user.socketId = socket.id;
+        user.lastActivity = new Date();
+        // Restore host status if user was host
+        if (user.isHost) {
+          room.hostId = socket.id;
+          user.isHost = true;
+        }
+        this.users.set(socket.id, user); // Map new socketId to user
+      } else {
+        // Normal join logic
+        if (!isUsernameAvailable(username, roomId, this.rooms, socket.id)) {
+          socket.emit('error', { message: 'Username already taken in this room' });
+          return;
+        }
+        user = createUser(socket.id, username, roomId, isHost);
+        this.users.set(socket.id, user);
+      }
+
+      // Add user to room
       room.users.set(socket.id, user);
 
       // Update room activity
@@ -87,7 +101,7 @@ class SocketHandlers {
       logger.info('User joined room', { 
         username, 
         roomId, 
-        isHost, 
+        isHost: user.isHost, 
         userCount: room.users.size,
         socketId: socket.id 
       });

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Users, Music, MessageCircle, Crown, Wifi, WifiOff, Mic, MicOff, Volume2, VolumeX, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Users, Music, MessageCircle, Crown, Wifi, WifiOff } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { useSocket } from '@/hooks/useSocket';
@@ -17,6 +17,19 @@ import { ChatPanel } from '@/components/room/ChatPanel';
 import { UserPanel } from '@/components/room/UserPanel';
 
 export default function RoomPage() {
+  // Persistent userId logic
+  const getOrCreateUserId = () => {
+    let userId = localStorage.getItem('userId');
+    if (!userId) {
+      userId =
+        typeof crypto !== 'undefined' && crypto.randomUUID
+          ? crypto.randomUUID()
+          : Math.random().toString(36).substring(2);
+      localStorage.setItem('userId', userId);
+    }
+    return userId;
+  };
+
   const params = useParams();
   const roomId = params.roomId as string;
   const [showJoinDialog, setShowJoinDialog] = useState(true);
@@ -30,15 +43,19 @@ export default function RoomPage() {
     removeFromQueue,
     updateVideoState,
     skipVideo,
-    videoEnded
+    videoEnded,
   } = useSocket();
 
   useEffect(() => {
     if (roomState.roomId && roomState.username) {
       setHasJoined(true);
       setShowJoinDialog(false);
+    }
+  }, [roomState.roomId, roomState.username]);
+
   const handleJoinRoom = (username: string) => {
-    joinRoom(roomId, username);
+    const userId = getOrCreateUserId();
+    joinRoom(roomId, username, userId); // Pass userId to joinRoom
     setHasJoined(true);
     setShowJoinDialog(false);
   };
@@ -53,7 +70,13 @@ export default function RoomPage() {
   };
 
   if (!hasJoined) {
-    return <JoinRoomDialog isOpen={showJoinDialog} roomId={roomId} onJoin={handleJoinRoom} />;
+    return (
+      <JoinRoomDialog
+        isOpen={showJoinDialog}
+        roomId={roomId}
+        onJoin={handleJoinRoom}
+      />
+    );
   }
 
   return (
@@ -62,12 +85,15 @@ export default function RoomPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <Link href="/">
-            <Button variant="outline" className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white">
+            <Button
+              variant="outline"
+              className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+            >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Leave Room
             </Button>
           </Link>
-          
+
           <div className="text-center">
             <h1 className="text-2xl md:text-3xl font-bold">Karaoke Room</h1>
             <div className="flex items-center justify-center gap-2 mt-1">
@@ -146,7 +172,6 @@ export default function RoomPage() {
         {/* Mobile-only tabs */}
         <div className="lg:hidden mt-6">
           <Tabs defaultValue="chat" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="chat">
                 <MessageCircle className="w-4 h-4 mr-1" />
@@ -157,7 +182,7 @@ export default function RoomPage() {
                 Users ({roomState.users.length})
               </TabsTrigger>
             </TabsList>
-            
+
             <TabsContent value="chat" className="mt-4">
               <div className="h-80">
                 <ChatPanel
@@ -166,7 +191,7 @@ export default function RoomPage() {
                 />
               </div>
             </TabsContent>
-            
+
             <TabsContent value="users" className="mt-4">
               <UserPanel
                 users={roomState.users}
