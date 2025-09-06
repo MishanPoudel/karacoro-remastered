@@ -95,6 +95,12 @@ export const useSocket = () => {
 
     socket.on('room_joined', (data) => {
       console.log('Room joined:', data);
+      
+      // Store host status in sessionStorage
+      if (typeof window !== 'undefined' && data.isHost) {
+        sessionStorage.setItem(`host_${data.roomId}`, 'true');
+      }
+      
       setRoomState(prev => ({
         ...prev,
         roomId: data.roomId,
@@ -167,7 +173,12 @@ export const useSocket = () => {
   const joinRoom = (roomId: string, username: string, userId?: string) => {
     if (socketRef.current) {
       console.log('Joining room:', roomId, 'as:', username, 'userId:', userId);
-      socketRef.current.emit('join_room', { roomId, username, userId });
+      
+      // Check if user was previously host
+      const wasHost = typeof window !== 'undefined' ? 
+        sessionStorage.getItem(`host_${roomId}`) === 'true' : false;
+      
+      socketRef.current.emit('join_room', { roomId, username, userId, wasHost });
     }
   };
 

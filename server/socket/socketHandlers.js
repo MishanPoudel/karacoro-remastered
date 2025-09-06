@@ -19,7 +19,7 @@ class SocketHandlers {
   }
 
   // Join room handler
-  handleJoinRoom(socket, { roomId, username, userId }) {
+  handleJoinRoom(socket, { roomId, username, userId, wasHost }) {
     try {
       if (!validateUsername(username)) {
         socket.emit('error', { message: 'Username must be 2-20 characters long and contain only letters, numbers, underscores, and hyphens' });
@@ -31,11 +31,20 @@ class SocketHandlers {
 
       // Create or get room
       let room = this.rooms.get(roomId);
-      const isHost = !room;
+      let isHost = !room; // Default: first user is host
+      
       if (!room) {
         room = createRoom(roomId, socket.id);
         this.rooms.set(roomId, room);
         logger.info('Room created via socket', { roomId, hostId: socket.id });
+      } else {
+        // Check if user was previously host and room has no current host
+        const currentHost = Array.from(room.users.values()).find(u => u.isHost);
+        if (wasHost && !currentHost) {
+          isHost = true;
+          room.hostId = socket.id;
+          logger.info('Host status restored', { username, roomId, socketId: socket.id });
+        }
       }
 
       // Check room capacity
@@ -50,10 +59,11 @@ class SocketHandlers {
         user = this.users.get(userId);
         user.socketId = socket.id;
         user.lastActivity = new Date();
-        // Restore host status if user was host
-        if (user.isHost) {
+        // Restore host status if user was host or should be host
+        if (user.isHost || isHost) {
           room.hostId = socket.id;
           user.isHost = true;
+          isHost = true;
         }
         this.users.set(socket.id, user); // Map new socketId to user
       } else {

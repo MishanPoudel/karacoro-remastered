@@ -52,12 +52,24 @@ export default function RoomPage() {
     if (roomState.roomId && roomState.username) {
       setHasJoined(true);
       setShowJoinDialog(false);
+    } else if (typeof window !== 'undefined') {
+      // Auto-rejoin if we have stored username for this room
+      const storedUsername = sessionStorage.getItem(`room_${roomId}_username`);
+      if (storedUsername) {
+        handleJoinRoom(storedUsername);
+      }
     }
-  }, [roomState.roomId, roomState.username]);
+  }, [roomState.roomId, roomState.username, roomId]);
 
   const handleJoinRoom = (username: string) => {
     const userId = getOrCreateUserId();
-    joinRoom(roomId, username, userId); // Pass userId to joinRoom
+    
+    // Store username for this room
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(`room_${roomId}_username`, username);
+    }
+    
+    joinRoom(roomId, username, userId);
     setHasJoined(true);
     setShowJoinDialog(false);
   };

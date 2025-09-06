@@ -47,6 +47,9 @@ export function JoinRoomDialog({ isOpen, roomId, onJoin }: JoinRoomDialogProps) 
     try {
       localStorage.setItem('karaoke_username', username.trim());
       
+      // Store room and username for potential host restoration
+      sessionStorage.setItem(`room_${roomId}_username`, username.trim());
+      
       // Add a small delay to show the joining state
       await new Promise(resolve => setTimeout(resolve, 500));
       
