@@ -19,13 +19,15 @@ import { UserPanel } from '@/components/room/UserPanel';
 export default function RoomPage() {
   // Persistent userId logic
   const getOrCreateUserId = () => {
-    let userId = localStorage.getItem('userId');
+    let userId = typeof window !== 'undefined' ? sessionStorage.getItem('userId') : null;
     if (!userId) {
       userId =
         typeof crypto !== 'undefined' && crypto.randomUUID
           ? crypto.randomUUID()
           : Math.random().toString(36).substring(2);
-      localStorage.setItem('userId', userId);
+      if (typeof window !== 'undefined') {
+        sessionStorage.setItem('userId', userId);
+      }
     }
     return userId;
   };
@@ -81,60 +83,60 @@ export default function RoomPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-3 sm:px-4 py-4 sm:py-6 max-w-7xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-row items-start sm:items-center justify-between gap-4 sm:gap-6 mb-4 sm:mb-6">
           <Link href="/">
             <Button
               variant="outline"
-              className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
+              size="sm"
+              className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white text-xs sm:text-sm h-8 sm:h-10"
             >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+              <ArrowLeft className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
               Leave Room
             </Button>
           </Link>
 
-          <div className="text-center">
-            <h1 className="text-2xl md:text-3xl font-bold">Karaoke Room</h1>
+          <div className="text-center flex-1 sm:flex-none">
+            <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold">Karaoke Room</h1>
             <div className="flex items-center justify-center gap-2 mt-1">
-              <span className="text-gray-400">Room ID:</span>
+              <span className="text-gray-400 text-xs sm:text-sm">Room ID:</span>
               <button
                 onClick={handleCopyRoomId}
-                className="font-mono text-red-500 hover:text-red-400 transition-colors"
+                className="font-mono text-red-500 hover:text-red-400 transition-colors text-xs sm:text-sm"
               >
                 {roomId}
               </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
             {/* Connection Status */}
             {roomState.connected ? (
-              <div className="flex items-center gap-1 text-green-400 text-sm">
-                <Wifi className="w-4 h-4" />
-                Connected
+              <div className="flex items-center gap-1 text-green-400 text-xs sm:text-sm">
+                <Wifi className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Connected</span>
               </div>
             ) : (
-              <div className="flex items-center gap-1 text-red-400 text-sm">
-                <WifiOff className="w-4 h-4" />
-                Disconnected
+              <div className="flex items-center gap-1 text-red-400 text-xs sm:text-sm">
+                <WifiOff className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Disconnected</span>
               </div>
             )}
 
             {/* Host Badge */}
             {roomState.isHost && (
-              <div className="flex items-center gap-1 text-yellow-500 text-sm">
-                <Crown className="w-4 h-4" />
-                Host
+              <div className="flex items-center gap-1 text-yellow-500 text-xs sm:text-sm">
+                <Crown className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Host</span>
               </div>
             )}
           </div>
         </div>
 
         {/* Main Content Layout */}
-        <div className="grid lg:grid-cols-12 gap-6">
-          {/* Left Column - Video Player and Queue */}
-          <div className="lg:col-span-8 space-y-6">
+        <div className="grid lg:grid-cols-12 gap-4 sm:gap-6">
+          <div className="lg:col-span-8 space-y-4 sm:space-y-6">
             <VideoPlayer
               currentVideo={roomState.currentVideo}
               videoState={roomState.videoState}
@@ -153,7 +155,7 @@ export default function RoomPage() {
           </div>
 
           {/* Right Sidebar - Voice Chat, Users and Chat (Desktop Only) */}
-          <div className="lg:col-span-4 space-y-6 hidden lg:block">
+          <div className="lg:col-span-4 space-y-4 sm:space-y-6 hidden lg:block">
             <UserPanel
               users={roomState.users}
               currentUsername={roomState.username}
@@ -170,21 +172,21 @@ export default function RoomPage() {
         </div>
 
         {/* Mobile-only tabs */}
-        <div className="lg:hidden mt-6">
+        <div className="lg:hidden mt-4 sm:mt-6">
           <Tabs defaultValue="chat" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="chat">
-                <MessageCircle className="w-4 h-4 mr-1" />
+            <TabsList className="grid w-full grid-cols-2 h-10 sm:h-12">
+              <TabsTrigger value="chat" className="text-xs sm:text-sm">
+                <MessageCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                 Chat ({roomState.chatHistory.length})
               </TabsTrigger>
-              <TabsTrigger value="users">
-                <Users className="w-4 h-4 mr-1" />
+              <TabsTrigger value="users" className="text-xs sm:text-sm">
+                <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
                 Users ({roomState.users.length})
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="chat" className="mt-4">
-              <div className="h-80">
+            <TabsContent value="chat" className="mt-3 sm:mt-4">
+              <div className="h-64 sm:h-80">
                 <ChatPanel
                   messages={roomState.chatHistory}
                   onSendMessage={sendChatMessage}
@@ -192,7 +194,7 @@ export default function RoomPage() {
               </div>
             </TabsContent>
 
-            <TabsContent value="users" className="mt-4">
+            <TabsContent value="users" className="mt-3 sm:mt-4">
               <UserPanel
                 users={roomState.users}
                 currentUsername={roomState.username}

@@ -9,10 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Plus, Search, Trash2, Clock, User, ExternalLink, Eye, Loader2, Music, PlayCircle, ListMusic, AlertTriangle } from 'lucide-react';
 import { QueueItem } from '@/hooks/useSocket';
-import { 
-  searchYouTubeVideos, 
-  getVideoDetails, 
-  extractVideoId, 
+import {
+  searchYouTubeVideos,
+  getVideoDetails,
+  extractVideoId,
   isValidYouTubeUrl,
   getVideoThumbnail,
   checkVideoEmbeddable,
@@ -49,7 +49,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
         const { results, isMock } = await getPopularKaraokeSongs();
         setPopularSongs(results);
         setIsPopularMock(isMock);
-        
+
         if (isMock) {
           console.log('Using mock popular songs - YouTube API not configured');
         }
@@ -105,9 +105,9 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       const thumbnail = getVideoThumbnail(videoId, 'medium');
       onAddToQueue(videoUrl, videoDetails.title, videoDetails.duration, thumbnail);
       setVideoUrl('');
-      
+
       toast.success(`Added "${videoDetails.title}" to queue!`);
-      
+
     } catch (error) {
       console.error('Error adding video:', error);
       toast.error('Failed to add video. Please check the URL and try again.');
@@ -131,7 +131,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       );
       setSearchResults(filteredResults);
       setIsSearchMock(isMock);
-      
+
       if (isMock) {
         toast.info('Using mock search results - YouTube API not configured', {
           description: 'Configure your YouTube API key for real search results'
@@ -161,15 +161,15 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
 
       const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
       const thumbnail = getVideoThumbnail(video.id, 'medium');
-      
+
       // Get detailed duration info
       const videoDetails = await getVideoDetails(video.id);
       const duration = videoDetails?.duration || 0;
-      
+
       onAddToQueue(videoUrl, video.title, duration, thumbnail);
-      
+
       toast.success(`Added "${video.title}" to queue!`);
-      
+
     } catch (error) {
       console.error('Error adding video from search:', error);
       toast.error('Failed to add video');
@@ -200,19 +200,21 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header Section */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-6">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-red-500/20 rounded-lg">
-            <ListMusic className="w-6 h-6 text-red-500" />
+            <ListMusic className="w-5 h-5 sm:w-6 sm:h-6 text-red-500" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-white">Video Queue</h2>
-            <p className="text-gray-400">Add songs and manage the karaoke queue</p>
+            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-white">Video Queue</h2>
+            <p className="text-gray-400 text-xs sm:text-sm lg:text-base">
+              Add songs and manage the karaoke queue
+            </p>
           </div>
         </div>
-        <Badge variant="secondary" className="bg-red-500/20 text-red-400 px-3 py-1">
+        <Badge variant="secondary" className="bg-red-500/20 text-red-400 px-3 py-1 text-xs sm:text-sm">
           {queue.length} in queue
         </Badge>
       </div>
@@ -221,57 +223,57 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       <Card className="bg-gray-800/50 border-red-500/30 overflow-hidden">
         <Tabs defaultValue="add" className="w-full">
           <div className="border-b border-gray-700 bg-gray-900/50">
-            <TabsList className="grid w-full grid-cols-3 bg-transparent border-none h-14">
-              <TabsTrigger 
-                value="add" 
-                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all"
+            <TabsList className="grid w-full grid-cols-3 bg-transparent border-none h-12 sm:h-14">
+              <TabsTrigger
+                value="add"
+                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm"
               >
-                <Plus className="w-4 h-4 mr-2" />
+                <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                 Add Songs
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="popular"
-                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all"
+                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm"
               >
-                <Music className="w-4 h-4 mr-2" />
+                <Music className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                 Popular
                 {isPopularMock && (
-                  <Badge variant="secondary" className="ml-1 text-xs bg-yellow-500/20 text-yellow-400">
+                  <Badge variant="secondary" className="ml-1 text-[10px] sm:text-xs bg-yellow-500/20 text-yellow-400">
                     MOCK
                   </Badge>
                 )}
               </TabsTrigger>
-              <TabsTrigger 
+              <TabsTrigger
                 value="queue"
-                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all"
+                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm"
               >
-                <PlayCircle className="w-4 h-4 mr-2" />
+                <PlayCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
                 Queue ({queue.length})
               </TabsTrigger>
             </TabsList>
           </div>
 
-          <div className="p-6">
-            <TabsContent value="add" className="space-y-6 mt-0">
+          <div className="p-4 sm:p-6">
+            <TabsContent value="add" className="space-y-4 sm:space-y-6 mt-0">
               {/* Add by URL Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-3">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex items-center gap-2 mb-2 sm:mb-3">
                   <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <h3 className="text-lg font-semibold text-white">Add by YouTube URL</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Add by YouTube URL</h3>
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <Input
                     placeholder="Paste YouTube URL here..."
                     value={videoUrl}
                     onChange={(e) => setVideoUrl(e.target.value)}
-                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500/20 h-12"
+                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500/20 h-10 sm:h-12 text-sm sm:text-base"
                     onKeyPress={(e) => handleKeyPress(e, 'url')}
                     disabled={isAdding}
                   />
                   <Button
                     onClick={handleAddByUrl}
                     disabled={isAdding || !videoUrl.trim()}
-                    className="bg-red-500 hover:bg-red-600 px-6 h-12"
+                    className="bg-red-500 hover:bg-red-600 px-4 sm:px-6 h-10 sm:h-12 w-full sm:w-auto"
                   >
                     {isAdding ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -286,30 +288,30 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               </div>
 
               {/* Search Section */}
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-3">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="flex items-center gap-2 mb-2 sm:mb-3">
                   <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <h3 className="text-lg font-semibold text-white">Search YouTube</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Search YouTube</h3>
                   {isSearchMock && (
-                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 text-xs">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
+                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 text-[10px] sm:text-xs">
+                      <AlertTriangle className="w-2 h-2 sm:w-3 sm:h-3 mr-1" />
                       MOCK DATA
                     </Badge>
                   )}
                 </div>
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <Input
                     placeholder="Search for karaoke songs..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500/20 h-12"
+                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500/20 h-10 sm:h-12 text-sm sm:text-base"
                     onKeyPress={(e) => handleKeyPress(e, 'search')}
                     disabled={isSearching}
                   />
                   <Button
                     onClick={handleSearch}
                     disabled={isSearching || !searchQuery.trim()}
-                    className="bg-red-500 hover:bg-red-600 px-6 h-12"
+                    className="bg-red-500 hover:bg-red-600 px-4 sm:px-6 h-10 sm:h-12 w-full sm:w-auto"
                   >
                     {isSearching ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -337,35 +339,41 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                     <h4 className="text-sm font-medium text-gray-300">
                       Search Results {isSearchMock ? '(Mock Data)' : '(Live Results)'}
                     </h4>
-                    <ScrollArea className="h-80">
-                      <div className="space-y-3 pr-4">
+                    <div className="max-h-64 sm:max-h-80 overflow-y-auto">
+                      <div className="space-y-3">
                         {searchResults.map((video) => (
                           <div
                             key={video.id}
-                            className="flex items-center gap-4 p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
+                            className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
                           >
-                            <Image src={video.thumbnail} alt={video.title} width={96} height={72} className="w-24 h-18 object-cover rounded-md flex-shrink-0" />
+                            <Image
+                              src={video.thumbnail}
+                              alt={video.title}
+                              width={80}
+                              height={60}
+                              className="w-16 h-12 sm:w-20 sm:h-15 object-cover rounded-md flex-shrink-0"
+                            />
                             <div className="flex-1 min-w-0">
-                              <h4 className="text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
+                              <h4 className="text-xs sm:text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
                                 {video.title}
                               </h4>
-                              <p className="text-xs text-gray-400 truncate mt-1">
+                              <p className="text-[10px] sm:text-xs text-gray-400 truncate mt-1">
                                 {video.channelTitle}
                               </p>
-                              <div className="flex items-center gap-3 mt-2">
-                                <Badge variant="secondary" className="text-xs bg-gray-600 text-gray-300">
+                              <div className="flex items-center gap-2 sm:gap-3 mt-2">
+                                <Badge variant="secondary" className="text-[10px] sm:text-xs bg-gray-600 text-gray-300">
                                   {video.duration}
                                 </Badge>
                                 {isSearchMock && (
-                                  <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-400">
+                                  <Badge variant="secondary" className="text-[10px] sm:text-xs bg-yellow-500/20 text-yellow-400">
                                     Mock
                                   </Badge>
                                 )}
                                 <button
                                   onClick={() => openVideoInNewTab(video.id)}
-                                  className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+                                  className="text-[10px] sm:text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
                                 >
-                                  <ExternalLink className="w-3 h-3" />
+                                  <ExternalLink className="w-2 h-2 sm:w-3 sm:h-3" />
                                   Preview
                                 </button>
                               </div>
@@ -374,18 +382,18 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                               onClick={() => handleAddFromSearch(video)}
                               size="sm"
                               disabled={addingVideoId === video.id}
-                              className="bg-red-500 hover:bg-red-600 flex-shrink-0"
+                              className="bg-red-500 hover:bg-red-600 flex-shrink-0 h-8 w-8 sm:h-auto sm:w-auto sm:px-3"
                             >
                               {addingVideoId === video.id ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
                               ) : (
-                                <Plus className="w-4 h-4" />
+                                <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
                               )}
                             </Button>
                           </div>
                         ))}
                       </div>
-                    </ScrollArea>
+                    </div>
                   </div>
                 )}
               </div>
@@ -395,10 +403,10 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <h3 className="text-lg font-semibold text-white">Popular Karaoke Songs</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Popular Karaoke Songs</h3>
                   {isPopularMock && (
-                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 text-xs">
-                      <AlertTriangle className="w-3 h-3 mr-1" />
+                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 text-[10px] sm:text-xs">
+                      <AlertTriangle className="w-2 h-2 sm:w-3 sm:h-3 mr-1" />
                       MOCK DATA
                     </Badge>
                   )}
@@ -415,44 +423,48 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                     </p>
                   </div>
                 )}
-                
+
                 {isLoadingPopular ? (
-                  <div className="flex items-center justify-center py-12">
+                  <div className="flex items-center justify-center py-8 sm:py-12">
                     <div className="text-center">
-                      <Loader2 className="w-8 h-8 animate-spin text-red-500 mx-auto mb-3" />
-                      <span className="text-gray-400">Loading popular songs...</span>
+                      <Loader2 className="w-6 h-6 sm:w-8 sm:h-8 animate-spin text-red-500 mx-auto mb-3" />
+                      <span className="text-gray-400 text-sm">Loading popular songs...</span>
                     </div>
                   </div>
                 ) : popularSongs.length > 0 ? (
-                  <ScrollArea className="h-96">
-                    <div className="space-y-3 pr-4">
+                  <div className="max-h-64 sm:max-h-96 overflow-y-auto overflow-x-hidden w-[85vw]">
+                    <div className="space-y-3 pr-1">
                       {popularSongs.map((video) => (
                         <div
                           key={video.id}
-                          className="flex items-center gap-4 p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
+                          className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group w-full"
                         >
-                          <Image src={video.thumbnail} alt={video.title} width={96} height={72} className="w-24 h-18 object-cover rounded-md flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
+                          <Image
+                            src={video.thumbnail}
+                            alt={video.title}
+                            width={80}
+                            height={60}
+                            className="w-16 h-12 sm:w-20 sm:h-15 object-cover rounded-md flex-shrink-0"
+                          />
+                          <div className="flex-1 min-w-0 overflow-hidden">
+                            <h4 className="text-xs sm:text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
                               {video.title}
                             </h4>
-                            <p className="text-xs text-gray-400 truncate mt-1">
-                              {video.channelTitle}
-                            </p>
-                            <div className="flex items-center gap-3 mt-2">
-                              <Badge variant="secondary" className="text-xs bg-gray-600 text-gray-300">
+                            <p className="text-[10px] sm:text-xs text-gray-400 truncate mt-1">{video.channelTitle}</p>
+                            <div className="flex items-center gap-2 sm:gap-3 mt-2 flex-wrap">
+                              <Badge variant="secondary" className="text-[10px] sm:text-xs bg-gray-600 text-gray-300 flex-shrink-0">
                                 {video.duration}
                               </Badge>
                               {isPopularMock && (
-                                <Badge variant="secondary" className="text-xs bg-yellow-500/20 text-yellow-400">
+                                <Badge variant="secondary" className="text-[10px] sm:text-xs bg-yellow-500/20 text-yellow-400 flex-shrink-0">
                                   Mock
                                 </Badge>
                               )}
                               <button
                                 onClick={() => openVideoInNewTab(video.id)}
-                                className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+                                className="text-[10px] sm:text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors flex-shrink-0"
                               >
-                                <ExternalLink className="w-3 h-3" />
+                                <ExternalLink className="w-2 h-2 sm:w-3 sm:h-3" />
                                 Preview
                               </button>
                             </div>
@@ -461,23 +473,23 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                             onClick={() => handleAddFromSearch(video)}
                             size="sm"
                             disabled={addingVideoId === video.id}
-                            className="bg-red-500 hover:bg-red-600 flex-shrink-0"
+                            className="bg-red-500 hover:bg-red-600 flex-shrink-0 h-8 w-8 sm:h-auto sm:w-auto sm:px-3"
                           >
                             {addingVideoId === video.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
                             ) : (
-                              <Plus className="w-4 h-4" />
+                              <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
                             )}
                           </Button>
                         </div>
                       ))}
                     </div>
-                  </ScrollArea>
+                  </div>
                 ) : (
-                  <div className="text-center py-12 text-gray-400">
-                    <Music className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p className="text-lg font-medium">No popular songs available</p>
-                    <p className="text-sm">Try searching for specific songs instead</p>
+                  <div className="text-center py-8 sm:py-12 text-gray-400">
+                    <Music className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-3 opacity-50" />
+                    <p className="text-base sm:text-lg font-medium">No popular songs available</p>
+                    <p className="text-xs sm:text-sm">Try searching for specific songs instead</p>
                   </div>
                 )}
               </div>
@@ -487,78 +499,84 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <h3 className="text-lg font-semibold text-white">Current Queue</h3>
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Current Queue</h3>
                 </div>
-                
+
                 {queue.length === 0 ? (
-                  <div className="text-center py-12 text-gray-400">
-                    <PlayCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                    <p className="text-xl font-medium mb-2">Queue is empty</p>
-                    <p className="text-sm">Add some videos to get the party started!</p>
+                  <div className="text-center py-8 sm:py-12 text-gray-400">
+                    <PlayCircle className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-4 opacity-50" />
+                    <p className="text-lg sm:text-xl font-medium mb-2">Queue is empty</p>
+                    <p className="text-xs sm:text-sm">Add some videos to get the party started!</p>
                   </div>
                 ) : (
-                  <ScrollArea className="h-96">
-                    <div className="space-y-3 pr-4">
+                  <div className="max-h-64 sm:max-h-96 overflow-y-auto">
+                    <div className="space-y-3">
                       {queue.map((item, index) => (
                         <div
                           key={item.id}
-                          className="flex items-center gap-4 p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
+                          className="flex items-center gap-2 sm:gap-4 p-3 sm:p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
                         >
                           {/* Queue Position */}
-                          <div className="flex-shrink-0 w-8 h-8 bg-red-500 rounded-full flex items-center justify-center text-sm font-bold text-white">
+                          <div className="flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-red-500 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-white">
                             {index + 1}
                           </div>
-                          
+
                           {/* Thumbnail */}
-                          <Image src={item.thumbnail} alt={item.title} width={80} height={60} className="w-20 h-15 object-cover rounded-md flex-shrink-0" />
-                          
+                          <Image
+                            src={item.thumbnail}
+                            alt={item.title}
+                            width={64}
+                            height={48}
+                            className="w-16 h-12 sm:w-20 sm:h-15 object-cover rounded-md flex-shrink-0"
+                          />
+
                           {/* Video Info */}
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
+                            <h4 className="text-xs sm:text-sm font-medium text-white truncate group-hover:text-red-400 transition-colors">
                               {item.title}
                             </h4>
-                            <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+                            <div className="flex items-center gap-2 sm:gap-3 text-[10px] sm:text-xs text-gray-400 mt-1">
                               <div className="flex items-center gap-1">
-                                <User className="w-3 h-3" />
+                                <User className="w-2 h-2 sm:w-3 sm:h-3" />
                                 <span>{item.addedBy}</span>
                               </div>
                               {item.duration > 0 && (
                                 <>
                                   <span>•</span>
                                   <div className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3" />
+                                    <Clock className="w-2 h-2 sm:w-3 sm:h-3" />
                                     <span>{formatDuration(item.duration)}</span>
                                   </div>
                                 </>
                               )}
                             </div>
                           </div>
-                          
+
                           {/* Actions */}
-                          <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                             <Button
                               onClick={() => openVideoInNewTab(item.videoId)}
                               size="sm"
                               variant="ghost"
-                              className="text-gray-400 hover:text-white h-8 w-8 p-0"
+                              className="text-gray-400 hover:text-white h-6 w-6 sm:h-8 sm:w-8 p-0"
                             >
-                              <Eye className="w-4 h-4" />
+                              <Eye className="w-3 h-3 sm:w-4 sm:h-4" />
                             </Button>
                             {isHost && (
                               <Button
                                 onClick={() => onRemoveFromQueue(item.id)}
                                 size="sm"
                                 variant="ghost"
-                                className="text-red-400 hover:text-red-300 hover:bg-red-500/20 h-8 w-8 p-0"
+                                className="text-red-400 hover:text-red-300 hover:bg-red-500/20 h-6 w-6 sm:h-8 sm:w-8 p-0"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
                               </Button>
                             )}
                           </div>
                         </div>
                       ))}
                     </div>
-                  </ScrollArea>
+                  </div>
                 )}
               </div>
             </TabsContent>

@@ -70,7 +70,7 @@ export function VideoPlayer({
       const script = document.createElement('script');
       script.src = 'https://www.youtube.com/iframe_api';
       script.async = true;
-      
+
       window.onYouTubeIframeAPIReady = () => {
         setApiLoaded(true);
       };
@@ -119,7 +119,7 @@ export function VideoPlayer({
         console.warn('Error destroying player:', error);
       }
     }
-    
+
     playerRef.current = null;
     setIsReady(false);
     setPlayerError(null);
@@ -127,12 +127,12 @@ export function VideoPlayer({
     setLocalState({ isPlaying: false, currentTime: 0 });
     setCurrentTime(0);
     setDuration(0);
-    
+
     if (syncIntervalRef.current) {
       clearInterval(syncIntervalRef.current);
       syncIntervalRef.current = null;
     }
-    
+
     setForceReload(prev => prev + 1);
   };
 
@@ -237,7 +237,7 @@ export function VideoPlayer({
     setIsReady(true);
     setPlayerError(null);
     setIsBuffering(false);
-    
+
     try {
       event.target.setVolume(volume);
 
@@ -251,7 +251,7 @@ export function VideoPlayer({
   const onPlay = () => {
     setLocalState(prev => ({ ...prev, isPlaying: true }));
     setIsBuffering(false);
-    
+
     if (isHost) {
       const currentTime = playerRef.current?.getCurrentTime() || 0;
       onVideoStateChange(true, currentTime, 'play');
@@ -260,7 +260,7 @@ export function VideoPlayer({
 
   const onPause = () => {
     setLocalState(prev => ({ ...prev, isPlaying: false }));
-    
+
     if (isHost) {
       const currentTime = playerRef.current?.getCurrentTime() || 0;
       onVideoStateChange(false, currentTime, 'pause');
@@ -327,7 +327,7 @@ export function VideoPlayer({
 
     setPlayerError(errorMessage);
     toast.error(`${errorMessage}. Skipping to next video...`);
-    
+
     if (isHost) {
       setTimeout(onSkip, 2000);
     }
@@ -359,7 +359,7 @@ export function VideoPlayer({
   const handleVolumeChange = (newVolume: number[]) => {
     const vol = newVolume[0];
     setVolume(vol);
-    
+
     if (playerRef.current) {
       try {
         playerRef.current.setVolume(vol);
@@ -420,164 +420,163 @@ export function VideoPlayer({
   const videoId = extractVideoId(currentVideo.videoId) || currentVideo.videoId;
 
   return (
-    <Card className="p-4 bg-gray-800 border-red-500/30">
-      <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
-        {!apiLoaded ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
-              <p className="text-white">Loading YouTube player...</p>
+    <Card className="p-3 sm:p-4 lg:p-6 bg-gray-800 border-red-500/30 w-full max-w-6xl mx-auto">
+      {/* Video Player */}
+      <div className="aspect-video bg-black rounded-lg overflow-hidden relative mb-4">
+        {isBuffering && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
+            <div className="text-center p-4">
+              <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
+              <p className="text-white text-sm sm:text-base">Loading video...</p>
             </div>
           </div>
-        ) : playerError ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-red-900/20">
-            <div className="text-center">
-              <AlertTriangle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-red-300 mb-2">Playback Error</h3>
-              <p className="text-red-400 mb-4">{playerError}</p>
-              <Button onClick={handleReload} className="bg-red-500 hover:bg-red-600">
-                <RotateCcw className="w-4 h-4 mr-2" />
-                Reload Player
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {isBuffering && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-10">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-500 mx-auto mb-4"></div>
-                  <p className="text-white">Loading video...</p>
-                </div>
-              </div>
-            )}
-            
-            <div className="w-full h-full">
-              <YouTube
-                key={`${videoId}-${forceReload}`}
-                videoId={videoId}
-                opts={opts}
-                onReady={onReady}
-                onPlay={onPlay}
-                onPause={onPause}
-                onStateChange={onStateChange}
-                onError={onError}
-                className="w-full h-full"
-                iframeClassName="w-full h-full"
-              />
-            </div>
-          </>
         )}
+
+        <div className="w-full h-full">
+          <YouTube
+            key={`${videoId}-${forceReload}`}
+            videoId={videoId}
+            opts={opts}
+            onReady={onReady}
+            onPlay={onPlay}
+            onPause={onPause}
+            onStateChange={onStateChange}
+            onError={onError}
+            className="w-full h-full"
+            iframeClassName="w-full h-full"
+          />
+        </div>
       </div>
 
-      {/* Video Info */}
-      <div className="mt-4">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-white truncate">
+      {/* Video Info - Responsive Layout */}
+      <div className="space-y-4">
+        {/* Title and Thumbnail */}
+        <div className="flex flex-col sm:flex-row sm:items-start gap-3">
+          <div className="flex-1 min-w-0 order-2 sm:order-1">
+            <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-white leading-tight mb-1">
               {currentVideo.title}
             </h3>
-            <p className="text-sm text-gray-400">
+            <p className="text-xs sm:text-sm text-gray-400">
               Added by {currentVideo.addedBy}
             </p>
           </div>
-          <Image
-            src={currentVideo.thumbnail}
-            alt={currentVideo.title}
-            width={640}
-            height={360}
-            className="w-16 h-12 object-cover rounded"
-          />
+          <div className="order-1 sm:order-2 flex-shrink-0 self-start">
+            <Image
+              src={currentVideo.thumbnail}
+              alt={currentVideo.title}
+              width={640}
+              height={360}
+              className="w-20 h-15 sm:w-16 sm:h-12 lg:w-20 lg:h-15 object-cover rounded"
+            />
+          </div>
         </div>
 
         {/* Progress Bar */}
         {duration > 0 && (
-          <div className="mb-4">
-            <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs sm:text-sm text-gray-400">
               <span>{formatTime(currentTime)}</span>
               <span>{formatTime(duration)}</span>
             </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
-              <div 
-                className="bg-red-500 h-2 rounded-full transition-all duration-500"
+            <div className="w-full bg-gray-700 rounded-full h-1.5 sm:h-2">
+              <div
+                className="bg-red-500 h-full rounded-full transition-all duration-500"
                 style={{ width: `${(currentTime / duration) * 100}%` }}
               />
             </div>
           </div>
         )}
 
-        {/* Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {isHost ? (
-              <Button
-                onClick={handlePlayPause}
-                disabled={!isReady || !!playerError}
-                className="bg-red-500 hover:bg-red-600"
-              >
-                {localState.isPlaying ? (
-                  <Pause className="w-4 h-4" />
-                ) : (
-                  <Play className="w-4 h-4" />
-                )}
-              </Button>
-            ) : (
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Users className="w-4 h-4" />
-                <span>Synced with host</span>
-                {lastSyncTime > 0 && (
-                  <span className="text-xs">
-                    (Last sync: {Math.floor((Date.now() - lastSyncTime) / 1000)}s ago)
+        {/* Controls - Responsive Layout */}
+        <div className="space-y-3 sm:space-y-4">
+          {/* Main Controls */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            {/* Playback Controls */}
+            <div className="flex items-center gap-2">
+              {isHost ? (
+                <Button
+                  onClick={handlePlayPause}
+                  disabled={!isReady || !!playerError}
+                  className="bg-red-500 hover:bg-red-600 h-8 sm:h-10"
+                  size="sm"
+                >
+                  {localState.isPlaying ? (
+                    <Pause className="w-3 h-3 sm:w-4 sm:h-4" />
+                  ) : (
+                    <Play className="w-3 h-3 sm:w-4 sm:h-4" />
+                  )}
+                  <span className="ml-1 sm:ml-2 text-xs sm:text-sm">
+                    {localState.isPlaying ? 'Pause' : 'Play'}
                   </span>
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400 bg-gray-700/50 px-2 py-1 rounded">
+                  <Users className="w-3 h-3 sm:w-4 sm:h-4 flex-shrink-0" />
+                  <span className="hidden sm:inline">Synced with host</span>
+                  <span className="sm:hidden">Synced</span>
+                </div>
+              )}
+
+              <Button
+                onClick={onSkip}
+                size="sm"
+                variant="outline"
+                className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white h-8 sm:h-10 text-xs sm:text-sm"
+              >
+                <SkipForward className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
+                {isHost ? 'Skip' : 'Vote'}
+              </Button>
+            </div>
+
+            {/* Volume Controls - Responsive */}
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Button
+                onClick={toggleMute}
+                variant="ghost"
+                size="sm"
+                className="text-gray-400 hover:text-white h-8 w-8 sm:h-10 sm:w-10 p-0"
+              >
+                {isMuted ? <VolumeX className="w-3 h-3 sm:w-4 sm:h-4" /> : <Volume2 className="w-3 h-3 sm:w-4 sm:h-4" />}
+              </Button>
+
+              <div className="flex items-center gap-2 flex-1 sm:flex-initial">
+                <div className="w-16 sm:w-20 lg:w-24">
+                  <Slider
+                    value={[isMuted ? 0 : volume]}
+                    onValueChange={handleVolumeChange}
+                    max={100}
+                    step={1}
+                    className="w-full"
+                  />
+                </div>
+                <span className="text-xs sm:text-sm text-gray-400 w-6 sm:w-8 tabular-nums">
+                  {isMuted ? 0 : volume}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Sync Status - Full Width on Mobile */}
+          <div className="pt-2 sm:pt-3 border-t border-gray-700 text-center text-xs sm:text-sm text-gray-400">
+            {isHost ? (
+              <span className="inline-flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                You are the host - you control playback
+              </span>
+            ) : (
+              <div className="space-y-1 sm:space-y-0">
+                <span className="inline-flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  Synced with host - {videoState.isPlaying ? 'Playing' : 'Paused'} at {formatTime(videoState.currentTime)}
+                </span>
+                {lastSyncTime > 0 && (
+                  <div className="text-xs text-gray-500 sm:inline sm:ml-2">
+                    (Last sync: {Math.floor((Date.now() - lastSyncTime) / 1000)}s ago)
+                  </div>
                 )}
               </div>
             )}
-            
-            <Button
-              onClick={onSkip}
-              size="sm"
-              variant="outline"
-              className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-            >
-              <SkipForward className="w-4 h-4 mr-1" />
-              {isHost ? 'Skip' : 'Vote Skip'}
-            </Button>
           </div>
-
-          {/* Volume Controls */}
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={toggleMute}
-              variant="ghost"
-              size="sm"
-              className="text-gray-400 hover:text-white"
-            >
-              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            </Button>
-            
-            <div className="w-24">
-              <Slider
-                value={[isMuted ? 0 : volume]}
-                onValueChange={handleVolumeChange}
-                max={100}
-                step={1}
-                className="w-full"
-              />
-            </div>
-            
-            <span className="text-sm text-gray-400 w-8">
-              {isMuted ? 0 : volume}
-            </span>
-          </div>
-        </div>
-
-        {/* Status */}
-        <div className="mt-3 pt-3 border-t border-gray-700 text-center text-sm text-gray-400">
-          {isHost ? (
-            'You are the host - you control playback'
-          ) : (
-            `Synced with host - ${videoState.isPlaying ? 'Playing' : 'Paused'} at ${formatTime(videoState.currentTime)}`
-          )}
         </div>
       </div>
     </Card>
