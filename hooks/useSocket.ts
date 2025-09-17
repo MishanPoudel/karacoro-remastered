@@ -62,6 +62,10 @@ export const useSocket = () => {
     if (socketRef.current) return;
 
     const getSocketUrl = () => {
+      if (process.env.NEXT_PUBLIC_SOCKET_URL) {
+        return process.env.NEXT_PUBLIC_SOCKET_URL;
+      }
+      
       if (typeof window === 'undefined') return 'http://localhost:3001';
       
       const currentUrl = window.location;
@@ -69,16 +73,25 @@ export const useSocket = () => {
         const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
         return `http://${socketHostname}`;
       }
-      return 'http://localhost:3001';
+      
+      if (currentUrl.hostname === 'localhost') {
+        return 'http://localhost:3001';
+      }
+      
+      // Production fallback
+      const protocol = currentUrl.protocol === 'https:' ? 'wss:' : 'ws:';
+      return `${protocol}//${currentUrl.hostname}`;
     };
 
     const socket = io(getSocketUrl(), {
-      transports: ['websocket'],
-      upgrade: false,
-      rememberUpgrade: false,
+      transports: ['websocket', 'polling'],
+      upgrade: true,
+      rememberUpgrade: true,
       autoConnect: true,
-      forceNew: true,
-      reconnection: false
+      forceNew: false,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000
     });
 
     socketRef.current = socket;

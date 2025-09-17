@@ -79,7 +79,7 @@ const nextConfig = {
   },
 
   async headers() {
-    const isDev = 'production';
+    const isDev = process.env.NODE_ENV === 'development';
 
     const connectSrc = [
       "'self'",
@@ -87,7 +87,7 @@ const nextConfig = {
       "https://www.youtube.com",
       "wss:",
       "ws:",
-      ...(isDev ? ["http://localhost:3001"] : [])
+      ...(isDev ? ["http://localhost:3001"] : [process.env.NEXT_PUBLIC_SOCKET_URL || ""])
     ].join(' ');
 
     const csp = [
@@ -95,13 +95,11 @@ const nextConfig = {
     "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https://img.youtube.com https://i.ytimg.com",
-    "connect-src 'self' https://www.googleapis.com https://www.youtube.com wss: ws: http://localhost:3001/",  // ← important
+    `connect-src ${connectSrc}`,
     "font-src 'self'",
     "media-src 'self'",
     "frame-src https://www.youtube.com"
   ].join('; ');
-    // Debug log — remove in production
-    console.log('\n🔐 Final CSP Header:\n', csp, '\n');
 
     return [
       {

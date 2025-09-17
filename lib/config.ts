@@ -22,7 +22,7 @@ export const ENV_CONFIG = {
 // Helper function to get socket URL
 function getSocketUrl(): string {
   if (typeof window === 'undefined') {
-    return 'http://localhost:3001';
+    return ENV_CONFIG.API.SOCKET_URL || 'http://localhost:3001';
   }
 
   const currentUrl = window.location;
@@ -32,18 +32,18 @@ function getSocketUrl(): string {
   }
   
   // Development URL logic
-  const protocol = currentUrl.protocol === 'https:' ? 'https:' : 'http:';
+  const protocol = currentUrl.protocol === 'https:' ? 'wss:' : 'ws:';
   
   if (currentUrl.hostname.includes('webcontainer-api.io')) {
     const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
-    return `${protocol}//${socketHostname}`;
+    return `http://${socketHostname}`;
   }
   
   if (currentUrl.hostname === 'localhost') {
-    return `${protocol}//localhost:3001`;
+    return `http://localhost:3001`;
   }
   
-  return `${protocol}//${currentUrl.hostname}:3001`;
+  return `${currentUrl.protocol}//${currentUrl.hostname}:3001`;
 }
 
 // Computed configuration

@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  karaoke-app:
+    build: .
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_PRODUCTION_MODE=true
+      - NEXT_PUBLIC_SOCKET_URL=ws://localhost:3001
+      - NEXT_PUBLIC_BASE_URL=http://localhost:3000
+      - NEXT_PUBLIC_YOUTUBE_API_KEY=${YOUTUBE_API_KEY}
+      - ALLOWED_ORIGINS=http://localhost:3000,https://localhost:3000
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
