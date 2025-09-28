@@ -1,8 +1,4 @@
-/**
- * SEO and Meta Tag Management
- */
-
-import { Metadata } from 'next';
+import type { Metadata } from 'next';
 
 interface SEOConfig {
   title: string;
@@ -10,7 +6,11 @@ interface SEOConfig {
   keywords?: string[];
   image?: string;
   url?: string;
-  type?: 'website' | 'article' | 'profile';
+  type?: 'website' | 'article'; // Restrict to valid OpenGraph types
+  siteName?: string;
+  locale?: string;
+  noIndex?: boolean;
+  noFollow?: boolean;
   publishedTime?: string;
   modifiedTime?: string;
   author?: string;
@@ -21,17 +21,22 @@ interface SEOConfig {
 export function generateMetadata(config: SEOConfig): Metadata {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://karaoke-party.com';
   const defaultImage = `${baseUrl}/og-image.jpg`;
+  
+  const robots = [];
+  if (config.noIndex) robots.push('noindex');
+  if (config.noFollow) robots.push('nofollow');
 
   return {
     title: config.title,
     description: config.description,
-    keywords: config.keywords,
+    keywords: config.keywords?.join(', '),
     authors: config.author ? [{ name: config.author }] : undefined,
+    robots: robots.length > 0 ? robots.join(', ') : 'index, follow',
     openGraph: {
-      type: config.type || 'website',
-      locale: 'en_US',
+      type: config.type === 'article' ? 'article' : 'website', // Ensure only valid types
+      locale: config.locale || 'en_US',
       url: config.url || baseUrl,
-      siteName: 'Karaoke Party',
+      siteName: config.siteName || 'Karaoke Party',
       title: config.title,
       description: config.description,
       images: [
@@ -53,7 +58,6 @@ export function generateMetadata(config: SEOConfig): Metadata {
       description: config.description,
       images: [config.image || defaultImage],
     },
-    robots: 'index, follow',
     alternates: {
       canonical: config.url || baseUrl,
     },
@@ -68,23 +72,17 @@ export const seoConfigs = {
     keywords: ['karaoke', 'singing', 'online', 'party', 'music', 'youtube', 'real-time', 'voice chat', 'friends', 'entertainment'],
   },
   
+  rooms: {
+    title: 'Join a Karaoke Room - Karaoke Party',
+    description: 'Join or create a private karaoke room. Sing along with friends in real-time with perfect synchronization.',
+    keywords: ['karaoke room', 'join', 'create', 'private', 'singing'],
+  },
+
   room: (roomId: string) => ({
     title: `Karaoke Room ${roomId} - Karaoke Party`,
     description: `Join karaoke room ${roomId} and sing along with friends in real-time. Synchronized video playback and voice chat included.`,
     keywords: ['karaoke room', 'online singing', 'voice chat', 'real-time', 'synchronized'],
   }),
-  
-  inspection: {
-    title: 'Theater Inspection - Karaoke Party',
-    description: 'Comprehensive theater inspection tool for safety and technical equipment assessment.',
-    keywords: ['theater inspection', 'safety assessment', 'technical equipment', 'venue inspection'],
-  },
-  
-  reports: {
-    title: 'Inspection Reports - Karaoke Party',
-    description: 'View and manage theater inspection reports with detailed safety and equipment assessments.',
-    keywords: ['inspection reports', 'theater safety', 'equipment assessment', 'venue reports'],
-  },
 };
 
 // JSON-LD structured data

@@ -1,17 +1,33 @@
 const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
+const dotenv = require('dotenv');
+
+// Load environment variables
+dotenv.config();
+
+console.log('🔧 [SERVER] Environment loaded:', {
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  ALLOWED_ORIGINS: process.env.ALLOWED_ORIGINS
+});
 
 const app = express();
 const server = createServer(app);
 
 const corsOptions = {
   origin: function (origin, callback) {
+    console.log('🔍 [SERVER] CORS check for origin:', origin);
+    
     // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('✅ [SERVER] No origin header, allowing request');
+      return callback(null, true);
+    }
     
     // In development, allow all origins
     if (process.env.NODE_ENV === 'development') {
+      console.log('✅ [SERVER] Development mode, allowing all origins');
       return callback(null, true);
     }
     
@@ -20,17 +36,40 @@ const corsOptions = {
       ? process.env.ALLOWED_ORIGINS.split(',')
       : ['https://your-frontend-domain.com'];
     
+    console.log('🔍 [SERVER] Checking against allowed origins:', allowedOrigins);
+    
     if (allowedOrigins.includes(origin)) {
+      console.log('✅ [SERVER] Origin allowed:', origin);
       callback(null, true);
     } else {
+      console.log('❌ [SERVER] Origin blocked:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
-  methods: ["GET", "POST"]
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
 };
 
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`📥 [SERVER] ${req.method} ${req.path}`, {
+    origin: req.headers.origin,
+    userAgent: req.headers['user-agent']?.substring(0, 50) + '...',
+    referer: req.headers.referer
+  });
+  next();
+});
+
 app.use(express.json());
+
+console.log('🔧 [SERVER] Initializing Socket.IO with options:', {
+  transports: ['websocket', 'polling'],
+  allowEIO3: true,
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  cors: 'configured with dynamic origin check'
+});
 
 const io = new Server(server, {
   cors: corsOptions,
@@ -39,6 +78,8 @@ const io = new Server(server, {
   pingTimeout: 60000,
   pingInterval: 25000
 });
+
+console.log('✅ [SERVER] Socket.IO initialized successfully');
 
 const rooms = new Map();
 const users = new Map();
@@ -59,7 +100,15 @@ function extractVideoId(url) {
 }
 
 io.on('connection', (socket) => {
-  console.log('🔌 User connected:', socket.id);
+  console.log('🔌 [SERVER] New connection established');
+  console.log('🔌 [SERVER] Socket ID:', socket.id);
+  console.log('🔌 [SERVER] Client info:', {
+    transport: socket.conn.transport.name,
+    origin: socket.handshake.headers.origin,
+    userAgent: socket.handshake.headers['user-agent'],
+    referer: socket.handshake.headers.referer,
+    remoteAddress: socket.handshake.address
+  });
 
   socket.on('join_room', ({ roomId, username }) => {
     try {
@@ -315,6 +364,64 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Handle force sync request from new host
+  socket.on('force_sync_all', ({ isPlaying, currentTime }) => {
+    try {
+      const user = users.get(socket.id);
+      if (!user || !user.isHost) return;
+
+      const room = rooms.get(user.roomId);
+      if (!room) return;
+
+      console.log(`🔄 [FORCE SYNC] Host ${user.username} force syncing room ${user.roomId}`);
+
+      // Update room video state
+      room.videoState.isPlaying = isPlaying;
+      room.videoState.currentTime = currentTime;
+      room.videoState.lastUpdate = Date.now();
+
+      // Broadcast to all users in the room
+      io.to(user.roomId).emit('video_sync', {
+        videoId: room.currentVideo?.videoId,
+        currentTime: currentTime,
+        isPlaying: isPlaying,
+        timestamp: room.videoState.lastUpdate,
+        fromHost: socket.id,
+        reason: 'force_sync'
+      });
+
+      console.log(`✅ [FORCE SYNC] Synced all users in room ${user.roomId}`);
+    } catch (error) {
+      console.error('❌ Error handling force sync:', error);
+    }
+  });
+
+  // Handle sync request from participants
+  socket.on('request_video_sync', () => {
+    try {
+      const user = users.get(socket.id);
+      if (!user) return;
+
+      const room = rooms.get(user.roomId);
+      if (!room || !room.currentVideo) return;
+
+      console.log(`🔄 [SYNC REQUEST] User ${user.username} requested sync in room ${user.roomId}`);
+
+      // Send current state back to the requesting user
+      socket.emit('video_sync', {
+        videoId: room.currentVideo.videoId,
+        currentTime: room.videoState.currentTime,
+        isPlaying: room.videoState.isPlaying,
+        timestamp: room.videoState.lastUpdate,
+        reason: 'sync_request_response'
+      });
+
+      console.log(`✅ [SYNC REQUEST] Sent current state to ${user.username}`);
+    } catch (error) {
+      console.error('❌ Error handling sync request:', error);
+    }
+  });
+
   socket.on('disconnect', (reason) => {
     // Ignore client namespace disconnects
     if (reason === 'client namespace disconnect') {
@@ -339,18 +446,66 @@ io.on('connection', (socket) => {
       console.log(`👋 User ${user.username} left room ${user.roomId}. Room now has ${room.users.size} users.`);
 
       if (user.isHost && room.users.size > 0) {
+        console.log(`🔄 [HOST MIGRATION] Host ${user.username} disconnected, transferring host...`);
+        
+        // Find the next host (first user in the room)
         const newHostEntry = Array.from(room.users.entries())[0];
         const [newHostSocketId, newHostUser] = newHostEntry;
         
+        // Transfer host status
         newHostUser.isHost = true;
         users.set(newHostSocketId, newHostUser);
         room.users.set(newHostSocketId, newHostUser);
         
+        // Preserve video state for seamless transition
+        const currentVideoState = room.videoState;
+        const currentVideo = room.currentVideo;
+        
+        console.log(`🔄 [HOST MIGRATION] Transferring video state:`, {
+          currentVideo: currentVideo?.title || 'none',
+          isPlaying: currentVideoState.isPlaying,
+          currentTime: currentVideoState.currentTime,
+          newHost: newHostUser.username
+        });
+        
+        // Notify all users about host change with video state
         io.to(user.roomId).emit('host_changed', {
           newHost: newHostUser.username,
-          socketId: newHostSocketId
+          socketId: newHostSocketId,
+          videoState: currentVideoState,
+          currentVideo: currentVideo,
+          queue: room.queue
         });
-        console.log(`👑 Host transferred to ${newHostUser.username} in room ${user.roomId}`);
+        
+        // Send special message to new host with recovery instructions
+        io.to(newHostSocketId).emit('host_migration_recovery', {
+          videoState: currentVideoState,
+          currentVideo: currentVideo,
+          queue: room.queue,
+          message: 'You are now the host. Video sync will be automatically restored.'
+        });
+        
+        // If there was a video playing, ensure sync recovery
+        if (currentVideo && currentVideoState.isPlaying) {
+          console.log(`🎥 [HOST MIGRATION] Recovering video playback for ${currentVideo.title}`);
+          
+          // Update video state timestamp to prevent desync
+          room.videoState.lastUpdate = Date.now();
+          
+          // Broadcast current state to all participants
+          setTimeout(() => {
+            io.to(user.roomId).emit('video_sync', {
+              videoId: currentVideo.videoId,
+              currentTime: currentVideoState.currentTime,
+              isPlaying: currentVideoState.isPlaying,
+              timestamp: room.videoState.lastUpdate,
+              fromHost: newHostSocketId,
+              reason: 'host_migration_recovery'
+            });
+          }, 1000); // Small delay to ensure new host is ready
+        }
+        
+        console.log(`👑 [HOST MIGRATION] Host transferred to ${newHostUser.username} in room ${user.roomId}`);
       }
 
       if (room.users.size === 0) {
@@ -387,6 +542,16 @@ app.get('/health', (req, res) => {
       connections: io.engine.clientsCount
     },
     roomDetails
+  });
+});
+
+// Add Socket.IO error logging
+io.engine.on("connection_error", (err) => {
+  console.error('❌ [SERVER] Socket.IO connection error:', {
+    code: err.code,
+    message: err.message,
+    context: err.context,
+    type: err.type
   });
 });
 

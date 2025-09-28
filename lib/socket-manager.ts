@@ -1,121 +1,113 @@
+/**
+ * Socket Manager for handling Socket.IO connections
+ */
+
 import { io, Socket } from 'socket.io-client';
-import MockSocketManager, { MockSocket } from './mock-socket';
-import { toast } from 'sonner';
+import { envLog } from './config';
 
-class SocketManager {
-  private socket: Socket | MockSocket | null = null;
-  private static instance: SocketManager;
-  private isUsingMock: boolean = false;
+export class SocketManager {
+  private socket: Socket | null = null;
+  private url: string;
+  private reconnectAttempts = 0;
+  private maxReconnectAttempts = 5;
+  private reconnectInterval = 1000;
 
-  private constructor() {}
-
-  static getInstance(): SocketManager {
-    if (!SocketManager.instance) {
-      SocketManager.instance = new SocketManager();
-    }
-    return SocketManager.instance;
+  constructor(url: string = process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001') {
+    this.url = url;
   }
 
-  private getSocketUrl(): string {
-    if (typeof window === 'undefined') {
-      return 'http://localhost:3001';
-    }
+  connect(): Promise<Socket> {
+    return new Promise((resolve, reject) => {
+      if (this.socket?.connected) {
+        resolve(this.socket);
+        return;
+      }
 
-    const currentUrl = window.location;
-    
-    if (process.env.NEXT_PUBLIC_SOCKET_URL) {
-      return process.env.NEXT_PUBLIC_SOCKET_URL;
-    }
-    
-    if (currentUrl.hostname.includes('webcontainer-api.io')) {
-      const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
-      return `http://${socketHostname}`;
-    }
-    
-    if (currentUrl.hostname === 'localhost' || currentUrl.hostname === '127.0.0.1') {
-      return `http://localhost:3001`;
-    }
-    
-    return `${currentUrl.protocol}//${currentUrl.hostname}:3001`;
+      try {
+        this.socket = io(this.url, {
+          transports: ['websocket', 'polling'],
+          timeout: 20000,
+          forceNew: true,
+        });
+
+        this.socket.on('connect', () => {
+          envLog.info('Socket connected');
+          this.reconnectAttempts = 0;
+          resolve(this.socket!);
+        });
+
+        this.socket.on('connect_error', (error) => {
+          envLog.error('Socket connection error:', error);
+          this.handleReconnect();
+          reject(error);
+        });
+
+        this.socket.on('disconnect', (reason) => {
+          envLog.info('Socket disconnected:', reason);
+          if (reason === 'io server disconnect') {
+            // Server initiated disconnect, reconnect manually
+            this.handleReconnect();
+          }
+        });
+
+      } catch (error) {
+        envLog.error('Failed to create socket connection:', error);
+        reject(error);
+      }
+    });
   }
 
-  async connect(): Promise<Socket | MockSocket> {
-    if (this.socket) {
-      return this.socket;
-    }
-
-    try {
-      const socketUrl = this.getSocketUrl();
-      console.log('Connecting to socket server:', socketUrl);
+  private handleReconnect() {
+    if (this.reconnectAttempts < this.maxReconnectAttempts) {
+      this.reconnectAttempts++;
+      envLog.info(`Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts})...`);
       
-      const realSocket = io(socketUrl, {
-        transports: ['websocket', 'polling'],
-        timeout: 5000,
-        reconnection: true,
-        reconnectionAttempts: 3,
-        reconnectionDelay: 1000,
-        autoConnect: true,
-        forceNew: false
-      });
-
-      const connectionResult = await Promise.race([
-        new Promise<Socket>((resolve, reject) => {
-          const connectHandler = () => {
-            console.log('Connected to real socket server');
-            realSocket.off('connect', connectHandler);
-            realSocket.off('connect_error', errorHandler);
-            this.isUsingMock = false;
-            resolve(realSocket);
-          };
-
-          const errorHandler = (error: any) => {
-            console.warn('Socket connection error:', error);
-            realSocket.off('connect', connectHandler);
-            realSocket.off('connect_error', errorHandler);
-            reject(error);
-          };
-
-          realSocket.on('connect', connectHandler);
-          realSocket.on('connect_error', errorHandler);
-        }),
-        new Promise<null>((_, reject) => {
-          setTimeout(() => {
-            realSocket.disconnect();
-            reject(new Error('Socket connection timeout'));
-          }, 5000);
-        })
-      ]);
-      this.socket = connectionResult;
-      return this.socket;
-
-    } catch (error) {
-      console.log('Switching to demo mode');
-      const mockSocketManager = MockSocketManager.getInstance();
-      this.socket = mockSocketManager.createMockSocket();
-      this.isUsingMock = true;
-
-      toast.info('🎭 Demo Mode Active', {
-        description: 'Server unavailable. Using demo mode.',
-        duration: 4000,
-      });
-
-      return this.socket;
+      setTimeout(() => {
+        this.connect().catch(error => {
+          envLog.error('Reconnection failed:', error);
+        });
+      }, this.reconnectInterval * this.reconnectAttempts);
+    } else {
+      envLog.error('Max reconnection attempts reached');
     }
   }
 
-  disconnect(): void {
-    // Don't disconnect automatically
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
+      envLog.info('Socket disconnected manually');
+    }
   }
 
-  isInDemoMode(): boolean {
-    return this.isUsingMock;
+  getSocket(): Socket | null {
+    return this.socket;
   }
 
   isConnected(): boolean {
-    if (!this.socket) return false;
-    if (this.isUsingMock) return true;
-    return (this.socket as Socket).connected;
+    return this.socket?.connected ?? false;
+  }
+
+  emit(event: string, ...args: any[]) {
+    if (this.socket?.connected) {
+      this.socket.emit(event, ...args);
+    } else {
+      envLog.warn('Cannot emit: Socket not connected');
+    }
+  }
+
+  on(event: string, callback: (...args: any[]) => void) {
+    if (this.socket) {
+      this.socket.on(event, callback);
+    }
+  }
+
+  off(event: string, callback?: (...args: any[]) => void) {
+    if (this.socket) {
+      this.socket.off(event, callback);
+    }
   }
 }
 
-export default SocketManager;
+// Singleton instance
+export const socketManager = new SocketManager();

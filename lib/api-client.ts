@@ -1,143 +1,77 @@
 /**
- * API Client for Production
+ * API Client for making HTTP requests
  */
 
-import { envLog } from './config';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
-export interface ApiResponse<T = any> {
-  data: T;
-  success: boolean;
-  error?: string;
-}
+export class ApiClient {
+  private baseURL: string;
 
-export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
-  headers?: Record<string, string>;
-  body?: any;
-  timeout?: number;
-  retries?: number;
-}
-
-class ApiClient {
-  private baseUrl: string;
-  private defaultHeaders: Record<string, string>;
-
-  constructor(baseUrl: string = '') {
-    this.baseUrl = baseUrl;
-    this.defaultHeaders = {
-      'Content-Type': 'application/json',
-    };
+  constructor(baseURL: string = API_BASE_URL) {
+    this.baseURL = baseURL;
   }
 
-  /**
-   * Make an API request
-   */
-  async request<T = any>(
-    endpoint: string,
-    options: RequestOptions = {}
-  ): Promise<ApiResponse<T>> {
-    const {
-      method = 'GET',
-      headers = {},
-      body,
-      timeout = 30000,
-      retries = 3
-    } = options;
+  async get<T>(endpoint: string): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
 
-    const url = this.buildUrl(endpoint);
-    const requestHeaders = { ...this.defaultHeaders, ...headers };
-
-    envLog.debug(`API Request: ${method} ${url}`, { body, headers: requestHeaders });
-
-    // Make API request with retries
-    for (let attempt = 1; attempt <= retries; attempt++) {
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), timeout);
-
-        const response = await fetch(url, {
-          method,
-          headers: requestHeaders,
-          body: body ? JSON.stringify(body) : undefined,
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        
-        envLog.debug(`API Response: ${method} ${url}`, data);
-
-        return {
-          data,
-          success: true
-        };
-
-      } catch (error) {
-        envLog.warn(`API Request failed (attempt ${attempt}/${retries}):`, error);
-
-        if (attempt === retries) {
-          return {
-            data: null as T,
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          };
-        }
-
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-      }
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    // This should never be reached, but TypeScript requires it
-    return {
-      data: null as T,
-      success: false,
-      error: 'Unexpected error'
-    };
+    return response.json();
   }
 
-  /**
-   * GET request
-   */
-  async get<T = any>(endpoint: string, options: Omit<RequestOptions, 'method'> = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { ...options, method: 'GET' });
-  }
+  async post<T>(endpoint: string, data: any): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
 
-  /**
-   * POST request
-   */
-  async post<T = any>(endpoint: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { ...options, method: 'POST', body });
-  }
-
-  /**
-   * PUT request
-   */
-  async put<T = any>(endpoint: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { ...options, method: 'PUT', body });
-  }
-
-  /**
-   * DELETE request
-   */
-  async delete<T = any>(endpoint: string, options: Omit<RequestOptions, 'method'> = {}): Promise<ApiResponse<T>> {
-    return this.request<T>(endpoint, { ...options, method: 'DELETE' });
-  }
-
-  private buildUrl(endpoint: string): string {
-    if (endpoint.startsWith('http')) {
-      return endpoint;
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
-    return `${this.baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
+
+    return response.json();
+  }
+
+  async put<T>(endpoint: string, data: any): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  async delete<T>(endpoint: string): Promise<T> {
+    const response = await fetch(`${this.baseURL}${endpoint}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return response.json();
   }
 }
 
-// Create singleton instances for different services
 export const apiClient = new ApiClient();
-export const youtubeApiClient = new ApiClient('https://www.googleapis.com/youtube/v3');
-export const roomsApiClient = new ApiClient('/api/rooms');

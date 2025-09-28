@@ -1,5 +1,5 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from '@/lib/error-boundary';
@@ -36,10 +36,14 @@ export const metadata: Metadata = {
     description: 'Create or join karaoke rooms and sing along with friends from anywhere in the world.',
     images: ['/og-image.jpg'],
   },
-  viewport: 'width=device-width, initial-scale=1',
-  themeColor: '#ef4444',
   manifest: '/manifest.json',
   metadataBase: new URL(process.env.NEXT_PUBLIC_BASE_URL || 'https://karaoke-party.com'),
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#ef4444',
 };
 
 export default function RootLayout({

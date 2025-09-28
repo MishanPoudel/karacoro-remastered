@@ -23,6 +23,8 @@ export interface ChatMessage {
   message: string;
   timestamp: Date;
   isHost: boolean;
+  isSystem?: boolean;
+  type?: string;
 }
 
 export interface VideoState {
@@ -62,28 +64,48 @@ export const useSocket = () => {
     if (socketRef.current) return;
 
     const getSocketUrl = () => {
+      console.log('🔍 [useSocket] Getting socket URL...');
+      
       if (process.env.NEXT_PUBLIC_SOCKET_URL) {
+        console.log('✅ [useSocket] Using NEXT_PUBLIC_SOCKET_URL:', process.env.NEXT_PUBLIC_SOCKET_URL);
         return process.env.NEXT_PUBLIC_SOCKET_URL;
       }
       
-      if (typeof window === 'undefined') return 'http://localhost:3001';
+      if (typeof window === 'undefined') {
+        console.log('🌐 [useSocket] Server-side rendering, using default localhost:3001');
+        return 'http://localhost:3001';
+      }
       
       const currentUrl = window.location;
+      console.log('🌐 [useSocket] Current window location:', {
+        hostname: currentUrl.hostname,
+        protocol: currentUrl.protocol,
+        port: currentUrl.port,
+        href: currentUrl.href
+      });
+      
       if (currentUrl.hostname.includes('webcontainer-api.io')) {
         const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
+        console.log('📦 [useSocket] WebContainer detected, using:', `http://${socketHostname}`);
         return `http://${socketHostname}`;
       }
       
       if (currentUrl.hostname === 'localhost') {
+        console.log('🏠 [useSocket] Localhost detected, using: http://localhost:3001');
         return 'http://localhost:3001';
       }
       
       // Production fallback
       const protocol = currentUrl.protocol === 'https:' ? 'wss:' : 'ws:';
-      return `${protocol}//${currentUrl.hostname}`;
+      const fallbackUrl = `${protocol}//${currentUrl.hostname}`;
+      console.log('🚀 [useSocket] Production fallback:', fallbackUrl);
+      return fallbackUrl;
     };
 
-    const socket = io(getSocketUrl(), {
+    const socketUrl = getSocketUrl();
+    console.log('🔌 [useSocket] Attempting to connect to:', socketUrl);
+    
+    const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       upgrade: true,
       rememberUpgrade: true,
@@ -96,18 +118,27 @@ export const useSocket = () => {
 
     socketRef.current = socket;
 
+    // Connection events
     socket.on('connect', () => {
-      console.log('Socket connected:', socket.id);
+      console.log('✅ [useSocket] Socket connected successfully:', socket.id);
+      console.log('✅ [useSocket] Socket transport:', socket.io.engine.transport.name);
       setRoomState(prev => ({ ...prev, connected: true }));
     });
 
     socket.on('disconnect', (reason) => {
-      console.log('Socket disconnected:', reason);
+      console.log('❌ [useSocket] Socket disconnected:', reason);
       setRoomState(prev => ({ ...prev, connected: false }));
     });
 
+    socket.on('connect_error', (error) => {
+      console.error('❌ [useSocket] Connection error:', error);
+      setRoomState(prev => ({ ...prev, connected: false }));
+    });
+
+    // Room events
     socket.on('room_joined', (data) => {
-      console.log('Room joined:', data);
+      console.log('Client: Room joined:', data.roomId);
+      console.log('Client: Initial chat history length:', data.chatHistory?.length || 0);
       setRoomState(prev => ({
         ...prev,
         roomId: data.roomId,
@@ -135,13 +166,24 @@ export const useSocket = () => {
       }));
     });
 
+    // Chat events
     socket.on('chat_message', (message) => {
+      console.log('Received message:', message);
+      
+      // Play notification sound for system messages
+      if (message.isSystem) {
+        const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmAeATCG1O7Afh8ECU622uvBaCYGMYnX8dONOgjwaufts18xCU2k5P6raxsEO4vS8tlkpT9hVcnTDzuD17nN8ldaTm1X9Rl3ndHxumwUlr/f5tSX2d4Db');
+        audio.volume = 0.3;
+        audio.play().catch(() => {});
+      }
+      
       setRoomState(prev => ({
         ...prev,
         chatHistory: [...prev.chatHistory, message]
       }));
     });
 
+    // Queue events
     socket.on('queue_updated', (data) => {
       setRoomState(prev => ({
         ...prev,
@@ -149,6 +191,7 @@ export const useSocket = () => {
       }));
     });
 
+    // Video events
     socket.on('video_changed', (data) => {
       setRoomState(prev => ({
         ...prev,
@@ -168,15 +211,80 @@ export const useSocket = () => {
       }));
     });
 
+    socket.on('video_sync', (data) => {
+      console.log('🎥 [useSocket] Video sync received:', data);
+      setRoomState(prev => ({
+        ...prev,
+        videoState: {
+          currentTime: data.currentTime,
+          isPlaying: data.isPlaying,
+          lastUpdate: data.timestamp || Date.now()
+        }
+      }));
+    });
+
+    // Host events
+    socket.on('host_changed', (data) => {
+      console.log('👑 [useSocket] Host changed:', data);
+      setRoomState(prev => {
+        const updatedUsers = prev.users.map(user => ({
+          ...user,
+          isHost: user.socketId === data.socketId
+        }));
+
+        return {
+          ...prev,
+          users: updatedUsers,
+          currentVideo: data.currentVideo || prev.currentVideo,
+          videoState: data.videoState || prev.videoState,
+          queue: data.queue || prev.queue,
+          isHost: data.socketId === socket.id
+        };
+      });
+    });
+
+    socket.on('host_migration_recovery', (data) => {
+      console.log('🔄 [useSocket] Host migration recovery:', data);
+      setRoomState(prev => ({
+        ...prev,
+        currentVideo: data.currentVideo,
+        videoState: data.videoState,
+        queue: data.queue,
+        isHost: true
+      }));
+      console.log('✅ [useSocket] You are now the host. Video sync restored.');
+    });
+
+    // Error handling
     socket.on('error', (error) => {
-      console.error('Socket error:', error);
+      console.error('❌ [useSocket] Socket error:', error);
+    });
+
+    // Reconnection events
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('🔄 [useSocket] Reconnected after', attemptNumber, 'attempts');
+    });
+
+    socket.on('reconnect_attempt', (attemptNumber) => {
+      console.log('🔄 [useSocket] Reconnection attempt #', attemptNumber);
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.error('❌ [useSocket] Reconnection error:', error);
+    });
+
+    socket.on('reconnect_failed', () => {
+      console.error('❌ [useSocket] Failed to reconnect after all attempts');
     });
 
     return () => {
-      // Don't disconnect on cleanup
+      if (socket) {
+        socket.disconnect();
+      }
     };
   }, []);
 
+  // Socket methods
   const joinRoom = (roomId: string, username: string, userId?: string) => {
     if (socketRef.current) {
       console.log('Joining room:', roomId, 'as:', username, 'userId:', userId);
@@ -214,6 +322,20 @@ export const useSocket = () => {
     }
   };
 
+  const forceSyncAll = (videoState: { isPlaying: boolean; currentTime: number }) => {
+    if (socketRef.current) {
+      console.log('🔄 [useSocket] Force syncing all participants:', videoState);
+      socketRef.current.emit('force_sync_all', videoState);
+    }
+  };
+
+  const requestVideoSync = () => {
+    if (socketRef.current) {
+      console.log('🔄 [useSocket] Requesting video sync from host');
+      socketRef.current.emit('request_video_sync');
+    }
+  };
+
   const videoEnded = () => {
     if (socketRef.current) {
       socketRef.current.emit('video_ended');
@@ -228,6 +350,8 @@ export const useSocket = () => {
     removeFromQueue,
     updateVideoState,
     skipVideo,
-    videoEnded
+    videoEnded,
+    forceSyncAll,
+    requestVideoSync
   };
 };

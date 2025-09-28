@@ -12,5 +12,3 @@ Disallow: /admin/
 # Allow important pages
 Allow: /
 Allow: /rooms/
-Allow: /inspection/
-Allow: /reports/

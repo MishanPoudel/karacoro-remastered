@@ -2,18 +2,24 @@
 const path = require('path');
 
 const nextConfig = {
-  swcMinify: false,
   eslint: {
     ignoreDuringBuilds: true,
   },
   images: {
     unoptimized: true,
-    domains: ['img.youtube.com', 'i.ytimg.com'],
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'img.youtube.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'i.ytimg.com',
+      },
+    ],
   },
   experimental: {
     optimizePackageImports: ['lucide-react'],
-    esmExternals: false,
-    serverComponentsExternalPackages: ['socket.io-client'],
   },
   compress: true,
   poweredByHeader: false,

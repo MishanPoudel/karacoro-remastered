@@ -1,25 +1,61 @@
+/**
+ * Mock Socket.io client for testing
+ */
+
 export class MockSocket {
-  connected: boolean = true;
-  on(event: string, handler: (...args: any[]) => void) {}
-  off(event: string, handler: (...args: any[]) => void) {}
-  disconnect() {}
-}
+  private events: { [key: string]: Function[] } = {};
+  private connected = false;
 
-class MockSocketManager {
-  private static instance: MockSocketManager;
+  emit(event: string, ...args: any[]) {
+    console.log(`MockSocket: Emitting ${event}`, args);
+    return this;
+  }
 
-  private constructor() {}
-
-  static getInstance(): MockSocketManager {
-    if (!MockSocketManager.instance) {
-      MockSocketManager.instance = new MockSocketManager();
+  on(event: string, callback: Function) {
+    if (!this.events[event]) {
+      this.events[event] = [];
     }
-    return MockSocketManager.instance;
+    this.events[event].push(callback);
+    return this;
   }
 
-  createMockSocket(): MockSocket {
-    return new MockSocket();
+  off(event: string, callback?: Function) {
+    if (!this.events[event]) return this;
+    
+    if (callback) {
+      this.events[event] = this.events[event].filter(cb => cb !== callback);
+    } else {
+      delete this.events[event];
+    }
+    return this;
+  }
+
+  connect() {
+    this.connected = true;
+    this.triggerEvent('connect');
+    return this;
+  }
+
+  disconnect() {
+    this.connected = false;
+    this.triggerEvent('disconnect');
+    return this;
+  }
+
+  private triggerEvent(event: string, ...args: any[]) {
+    if (this.events[event]) {
+      this.events[event].forEach(callback => callback(...args));
+    }
+  }
+
+  // Mock method to simulate server events
+  mockServerEvent(event: string, ...args: any[]) {
+    this.triggerEvent(event, ...args);
+  }
+
+  get isConnected() {
+    return this.connected;
   }
 }
 
-export default MockSocketManager;
+export const createMockSocket = () => new MockSocket();

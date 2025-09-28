@@ -75,8 +75,19 @@ class SocketHandlers {
       // Join socket room
       socket.join(roomId);
 
-      // Send room state to new user
-      socket.emit('room_joined', {
+      // Send system message as toast instead of chat
+      const joinMessage = {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        message: `🎉 ${user.username} joined the room${user.isHost ? ' as host' : ''}`,
+        timestamp: new Date(),
+        isSystem: true,
+        isHost: false
+      };
+      console.log('Server: Creating join toast:', joinMessage);
+
+      // Send room state to new user (including the join message in history)
+      const roomState = {
         roomId,
         username: user.username,
         isHost: user.isHost,
@@ -89,7 +100,9 @@ class SocketHandlers {
         currentVideo: room.currentVideo,
         videoState: room.videoState,
         chatHistory: room.chatHistory.slice(-config.rooms.maxChatHistory)
-      });
+      };
+      console.log('Server: Sending room state with chat history length:', roomState.chatHistory.length);
+      socket.emit('room_joined', roomState);
 
       // Notify others about new user
       socket.to(roomId).emit('user_joined', {
@@ -97,6 +110,11 @@ class SocketHandlers {
         isHost: user.isHost,
         socketId: socket.id
       });
+
+      // Send join toast to everyone including the new user
+      console.log('🚀 [Server] Sending join message to room:', roomId, joinMessage);
+      this.io.to(roomId).emit('chat_message', joinMessage);
+      console.log('🚀 [Server] Join message sent successfully');
 
       logger.info('User joined room', { 
         username, 
@@ -257,13 +275,24 @@ class SocketHandlers {
         videoTitle: queueItem.title
       });
 
+      // Send system message for video added as toast
+      const queueMessage = {
+        id: Date.now() + Math.random(),
+        username: 'System',
+        message: `🎵 ${user.username} added "${queueItem.title}" to the queue`,
+        timestamp: new Date(),
+        isSystem: true,
+        isHost: false
+      };
+      this.io.to(user.roomId).emit('chat_message', queueMessage);
+
       // Only auto-play if there's no current video playing
       if (!room.currentVideo) {
         const nextVideo = room.queue.shift();
         room.currentVideo = nextVideo;
         room.playedVideos.add(nextVideo.videoId);
         room.videoState = {
-          isPlaying: false, // Don't auto-start, let host control
+          isPlaying: true, // Auto-start video
           currentTime: 0,
           lastUpdate: Date.now()
         };
@@ -377,7 +406,7 @@ class SocketHandlers {
         room.currentVideo = nextVideo;
         room.playedVideos.add(nextVideo.videoId);
         room.videoState = {
-          isPlaying: false, // Don't auto-start, let host control
+          isPlaying: true, // Auto-start video
           currentTime: 0,
           lastUpdate: Date.now()
         };
@@ -390,6 +419,17 @@ class SocketHandlers {
           videoState: room.videoState,
           skippedBy: user.username
         });
+
+        // Send system message for video skip as toast
+        const skipMessage = {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          message: `⏭️ ${user.username} skipped to "${nextVideo.title}"`,
+          timestamp: new Date(),
+          isSystem: true,
+          isHost: false
+        };
+        this.io.to(user.roomId).emit('chat_message', skipMessage);
 
         logger.info('Video skipped', { 
           nextVideo: nextVideo.title, 
@@ -434,7 +474,7 @@ class SocketHandlers {
         room.currentVideo = nextVideo;
         room.playedVideos.add(nextVideo.videoId);
         room.videoState = {
-          isPlaying: false, // Don't auto-start, let host control
+          isPlaying: true, // Auto-start video
           currentTime: 0,
           lastUpdate: Date.now()
         };
@@ -446,6 +486,17 @@ class SocketHandlers {
           queue: room.queue,
           videoState: room.videoState
         });
+
+        // Send system message for auto-advance as toast
+        const autoAdvanceMessage = {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          message: `▶️ Now playing: "${nextVideo.title}"`,
+          timestamp: new Date(),
+          isSystem: true,
+          isHost: false
+        };
+        this.io.to(user.roomId).emit('chat_message', autoAdvanceMessage);
 
         logger.info('Auto-advanced to next video', { 
           nextVideo: nextVideo.title, 
@@ -486,6 +537,17 @@ class SocketHandlers {
           username: currentUser.username,
           isHost: currentUser.isHost
         });
+
+        // Send system message for user leaving as toast
+        const leaveMessage = {
+          id: Date.now() + Math.random(),
+          username: 'System',
+          message: `👋 ${currentUser.username} left the room`,
+          timestamp: new Date(),
+          isSystem: true,
+          isHost: false
+        };
+        socket.to(currentUser.roomId).emit('chat_message', leaveMessage);
         
         // Notify about voice disconnection if applicable
         if (currentUser.voiceConnected) {
@@ -502,6 +564,17 @@ class SocketHandlers {
               newHost: newHost.username,
               socketId: newHost.socketId
             });
+
+            // Send system message for host change as toast
+            const hostChangeMessage = {
+              id: Date.now() + Math.random(),
+              username: 'System',
+              message: `👑 ${newHost.username} is now the host`,
+              timestamp: new Date(),
+              isSystem: true,
+              isHost: false
+            };
+            this.io.to(currentUser.roomId).emit('chat_message', hostChangeMessage);
             
             logger.info('Host transferred', { 
               oldHost: currentUser.username, 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -41,11 +41,15 @@ export function VideoPlayer({
     currentTime: 0
   });
   const [lastSyncTime, setLastSyncTime] = useState(0);
+  const [forceReload, setForceReload] = useState(0);
+  const [apiLoaded, setApiLoaded] = useState(false);
+
+  // Refs for managing intervals and preventing race conditions
   const isSeekingRef = useRef(false);
   const lastVideoIdRef = useRef<string | null>(null);
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const [forceReload, setForceReload] = useState(0);
-  const [apiLoaded, setApiLoaded] = useState(false);
+  const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const hostSyncIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load YouTube API
   useEffect(() => {
@@ -84,13 +88,30 @@ export function VideoPlayer({
     };
 
     loadYouTubeAPI();
-
-    return () => {
-      if (syncIntervalRef.current) {
-        clearInterval(syncIntervalRef.current);
-      }
-    };
   }, []);
+
+  // Cleanup intervals
+  const cleanupIntervals = useCallback(() => {
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+    if (timeUpdateIntervalRef.current) {
+      clearInterval(timeUpdateIntervalRef.current);
+      timeUpdateIntervalRef.current = null;
+    }
+    if (hostSyncIntervalRef.current) {
+      clearInterval(hostSyncIntervalRef.current);
+      hostSyncIntervalRef.current = null;
+    }
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupIntervals();
+    };
+  }, [cleanupIntervals]);
 
   const opts: YouTubeProps['opts'] = {
     height: '100%',
@@ -100,7 +121,7 @@ export function VideoPlayer({
       controls: isHost ? 1 : 0,
       disablekb: !isHost ? 1 : 0,
       fs: 1,
-      rel: 0, // Prevent related videos
+      rel: 0,
       showinfo: 0,
       modestbranding: 1,
       playsinline: 1,
@@ -111,7 +132,9 @@ export function VideoPlayer({
   };
 
   // Reinitialize player when video changes
-  const reinitializePlayer = () => {
+  const reinitializePlayer = useCallback(() => {
+    cleanupIntervals();
+    
     if (playerRef.current) {
       try {
         playerRef.current.destroy();
@@ -127,18 +150,27 @@ export function VideoPlayer({
     setLocalState({ isPlaying: false, currentTime: 0 });
     setCurrentTime(0);
     setDuration(0);
-    
-    if (syncIntervalRef.current) {
-      clearInterval(syncIntervalRef.current);
-      syncIntervalRef.current = null;
-    }
+    setLastSyncTime(0);
+    isSeekingRef.current = false;
     
     setForceReload(prev => prev + 1);
-  };
+  }, [cleanupIntervals]);
+
+  // Handle video changes
+  useEffect(() => {
+    if (currentVideo && currentVideo.videoId !== lastVideoIdRef.current) {
+      lastVideoIdRef.current = currentVideo.videoId;
+      reinitializePlayer();
+    }
+  }, [currentVideo, reinitializePlayer]);
 
   // Sync with remote state for guests
   useEffect(() => {
-    if (!isReady || !playerRef.current || isHost || !currentVideo) return;
+    if (!isReady || !playerRef.current || isHost || !currentVideo) {
+      return;
+    }
+
+    cleanupIntervals();
 
     const syncWithHost = () => {
       if (isSeekingRef.current) return;
@@ -149,24 +181,28 @@ export function VideoPlayer({
         const isPlayerPlaying = playerState === 1;
 
         const timeDiff = Math.abs(currentPlayerTime - videoState.currentTime);
-        const shouldSync = timeDiff > 0.5;
+        const shouldSync = timeDiff > 1.0; // Increased threshold to reduce frequent syncing
 
         if (shouldSync && videoState.currentTime > 0) {
+          console.log(`Syncing: player=${currentPlayerTime}s, host=${videoState.currentTime}s, diff=${timeDiff}s`);
           isSeekingRef.current = true;
           playerRef.current.seekTo(videoState.currentTime, true);
           setLastSyncTime(Date.now());
 
-          // After seeking, always match play/pause state
           setTimeout(() => {
-            if (videoState.isPlaying) {
-              playerRef.current.playVideo();
-            } else {
-              playerRef.current.pauseVideo();
+            try {
+              if (videoState.isPlaying && !isPlayerPlaying) {
+                playerRef.current.playVideo();
+              } else if (!videoState.isPlaying && isPlayerPlaying) {
+                playerRef.current.pauseVideo();
+              }
+            } catch (error) {
+              console.error('Error setting play state after sync:', error);
             }
             isSeekingRef.current = false;
-          }, 300);
+          }, 500);
         } else {
-          // If not seeking, still ensure play/pause is matched
+          // Just sync play/pause state if no seeking needed
           if (videoState.isPlaying && !isPlayerPlaying && !isBuffering) {
             playerRef.current.playVideo();
           } else if (!videoState.isPlaying && isPlayerPlaying) {
@@ -184,55 +220,73 @@ export function VideoPlayer({
       }
     };
 
-    if (syncIntervalRef.current) {
-      clearInterval(syncIntervalRef.current);
-    }
-
     syncWithHost();
-    syncIntervalRef.current = setInterval(syncWithHost, 500);
+    syncIntervalRef.current = setInterval(syncWithHost, 1000); // Reduced frequency
 
     return () => {
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
       }
     };
-  }, [videoState, isReady, isHost, currentVideo, isBuffering]);
-
-  // Handle video changes
-  useEffect(() => {
-    if (currentVideo && currentVideo.videoId !== lastVideoIdRef.current) {
-      lastVideoIdRef.current = currentVideo.videoId;
-      reinitializePlayer();
-    }
-  }, [currentVideo]);
+  }, [videoState, isReady, isHost, currentVideo, isBuffering, cleanupIntervals]);
 
   // Update current time periodically
   useEffect(() => {
     if (!isReady || !playerRef.current) return;
 
-    const interval = setInterval(() => {
+    cleanupIntervals();
+
+    const updateTime = () => {
       try {
         const time = playerRef.current.getCurrentTime();
         const dur = playerRef.current.getDuration();
-        setCurrentTime(time);
-        setDuration(dur);
+        
+        if (!isNaN(time)) setCurrentTime(time);
+        if (!isNaN(dur)) setDuration(dur);
 
         if (isHost) {
           setLocalState(prev => ({ ...prev, currentTime: time }));
-          // Only broadcast sync events when playing
-          if (localState.isPlaying) {
-            onVideoStateChange(true, time, 'sync');
-          }
         }
       } catch (error) {
         // Player might not be ready
       }
-    }, 500);
+    };
 
-    return () => clearInterval(interval);
-  }, [isReady, isHost, onVideoStateChange, localState.isPlaying]);
+    timeUpdateIntervalRef.current = setInterval(updateTime, 1000);
 
-  const onReady = async (event: any) => {
+    // Separate interval for host sync broadcasts
+    if (isHost) {
+      const hostSync = () => {
+        try {
+          const time = playerRef.current.getCurrentTime();
+          const playerState = playerRef.current.getPlayerState();
+          const isPlaying = playerState === 1;
+          
+          if (isPlaying && !isNaN(time)) {
+            onVideoStateChange(true, time, 'sync');
+          }
+        } catch (error) {
+          // Player might not be ready
+        }
+      };
+
+      hostSyncIntervalRef.current = setInterval(hostSync, 2000); // Less frequent sync broadcasts
+    }
+
+    return () => {
+      if (timeUpdateIntervalRef.current) {
+        clearInterval(timeUpdateIntervalRef.current);
+        timeUpdateIntervalRef.current = null;
+      }
+      if (hostSyncIntervalRef.current) {
+        clearInterval(hostSyncIntervalRef.current);
+        hostSyncIntervalRef.current = null;
+      }
+    };
+  }, [isReady, isHost, onVideoStateChange, cleanupIntervals]);
+
+  const onReady = useCallback(async (event: any) => {
     playerRef.current = event.target;
     setIsReady(true);
     setPlayerError(null);
@@ -240,34 +294,33 @@ export function VideoPlayer({
     
     try {
       event.target.setVolume(volume);
-
       toast.success('Video loaded successfully');
     } catch (error) {
       console.error('Error in onReady:', error);
       setPlayerError('Failed to initialize video');
     }
-  };
+  }, [volume]);
 
-  const onPlay = () => {
+  const onPlay = useCallback(() => {
     setLocalState(prev => ({ ...prev, isPlaying: true }));
     setIsBuffering(false);
     
-    if (isHost) {
-      const currentTime = playerRef.current?.getCurrentTime() || 0;
+    if (isHost && playerRef.current) {
+      const currentTime = playerRef.current.getCurrentTime() || 0;
       onVideoStateChange(true, currentTime, 'play');
     }
-  };
+  }, [isHost, onVideoStateChange]);
 
-  const onPause = () => {
+  const onPause = useCallback(() => {
     setLocalState(prev => ({ ...prev, isPlaying: false }));
     
-    if (isHost) {
-      const currentTime = playerRef.current?.getCurrentTime() || 0;
+    if (isHost && playerRef.current) {
+      const currentTime = playerRef.current.getCurrentTime() || 0;
       onVideoStateChange(false, currentTime, 'pause');
     }
-  };
+  }, [isHost, onVideoStateChange]);
 
-  const onStateChange = (event: any) => {
+  const onStateChange = useCallback((event: any) => {
     const currentTime = event.target.getCurrentTime();
     setLocalState(prev => ({ ...prev, currentTime }));
 
@@ -303,9 +356,9 @@ export function VideoPlayer({
         }
         break;
     }
-  };
+  }, [isHost, onVideoEnd, onVideoStateChange]);
 
-  const onError = (event: any) => {
+  const onError = useCallback((event: any) => {
     const errorCode = event.data;
     let errorMessage = 'Video playback error';
 
@@ -331,9 +384,9 @@ export function VideoPlayer({
     if (isHost) {
       setTimeout(onSkip, 2000);
     }
-  };
+  }, [isHost, onSkip]);
 
-  const handlePlayPause = () => {
+  const handlePlayPause = useCallback(() => {
     if (!playerRef.current || !isHost) {
       if (!isHost) {
         toast.warning('Only the host can control playback');
@@ -354,9 +407,9 @@ export function VideoPlayer({
       console.error('Error toggling play/pause:', error);
       toast.error('Failed to control playback');
     }
-  };
+  }, [isHost, localState.isPlaying, onVideoStateChange]);
 
-  const handleVolumeChange = (newVolume: number[]) => {
+  const handleVolumeChange = useCallback((newVolume: number[]) => {
     const vol = newVolume[0];
     setVolume(vol);
     
@@ -372,9 +425,9 @@ export function VideoPlayer({
         console.error('Error setting volume:', error);
       }
     }
-  };
+  }, [isMuted]);
 
-  const toggleMute = () => {
+  const toggleMute = useCallback(() => {
     if (!playerRef.current) return;
 
     try {
@@ -389,19 +442,19 @@ export function VideoPlayer({
     } catch (error) {
       console.error('Error toggling mute:', error);
     }
-  };
+  }, [isMuted, volume]);
 
-  const handleReload = () => {
+  const handleReload = useCallback(() => {
     reinitializePlayer();
     toast.info('Reloading player...');
-  };
+  }, [reinitializePlayer]);
 
-  const formatTime = (seconds: number): string => {
+  const formatTime = useCallback((seconds: number): string => {
     if (!seconds || isNaN(seconds)) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
   if (!currentVideo) {
     return (
@@ -540,7 +593,7 @@ export function VideoPlayer({
               className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
             >
               <SkipForward className="w-4 h-4 mr-1" />
-              {isHost ? 'Skip' : 'Vote Skip'}
+              Skip
             </Button>
           </div>
 
