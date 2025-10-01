@@ -45,7 +45,7 @@ class VoiceHandlers {
       const voiceRoom = this.voiceRooms.get(roomId);
 
       // Check if user is already in voice chat
-      if (voiceRoom.participants.has(socket.id)) {
+      if (voiceRoom.participants.has(userId)) {
         logger.warn('User already in voice chat', { username: user.username, roomId });
         return;
       }
@@ -56,8 +56,8 @@ class VoiceHandlers {
       user.lastActivity = new Date();
       this.users.set(socket.id, user);
 
-      // Add to voice room participants
-      voiceRoom.participants.set(socket.id, {
+      // Add to voice room participants - key by userId for consistent lookups
+      voiceRoom.participants.set(userId, {
         userId: userId, // Use the actual userId passed from client
         username: user.username,
         socketId: socket.id,
@@ -71,7 +71,7 @@ class VoiceHandlers {
 
       // Get list of existing voice participants (excluding the new user)
       const existingParticipants = Array.from(voiceRoom.participants.values())
-        .filter(p => p.socketId !== socket.id);
+        .filter(p => p.userId !== userId);
       console.log('[VOICE DEBUG] Existing participants before join', { roomId, userId, existingParticipants });
 
       // Create participant data for client
@@ -127,10 +127,8 @@ class VoiceHandlers {
         }))
       });
 
-      // Find the target participant in voice room
-      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
-        String(p.userId) === String(targetUserId)
-      );
+      // Find the target participant in voice room by userId key
+      const targetParticipant = voiceRoom.participants.get(targetUserId);
       
       if (!targetParticipant) {
         logger.warn('Target user not found in voice chat', { 
@@ -170,10 +168,8 @@ class VoiceHandlers {
       const voiceRoom = this.voiceRooms.get(user.roomId);
       if (!voiceRoom) return;
 
-      // Find the target participant in voice room
-      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
-        String(p.userId) === String(targetUserId)
-      );
+      // Find the target participant in voice room by userId key
+      const targetParticipant = voiceRoom.participants.get(targetUserId);
       
       if (!targetParticipant) {
         logger.warn('Target user not found for voice answer', { 
@@ -212,10 +208,8 @@ class VoiceHandlers {
       const voiceRoom = this.voiceRooms.get(user.roomId);
       if (!voiceRoom) return;
 
-      // Find the target participant in voice room
-      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
-        String(p.userId) === String(targetUserId)
-      );
+      // Find the target participant in voice room by userId key
+      const targetParticipant = voiceRoom.participants.get(targetUserId);
       
       if (!targetParticipant) return;
 
@@ -249,7 +243,7 @@ class VoiceHandlers {
       // Update voice room participant
       const voiceRoom = this.voiceRooms.get(roomId);
       if (voiceRoom) {
-        const participant = voiceRoom.participants.get(socket.id);
+        const participant = voiceRoom.participants.get(userId);
         if (participant) {
           participant.isMuted = isMuted;
           participant.isSpeaking = false; // Stop speaking when muted
@@ -285,7 +279,7 @@ class VoiceHandlers {
       // Update voice room participant
       const voiceRoom = this.voiceRooms.get(roomId);
       if (voiceRoom) {
-        const participant = voiceRoom.participants.get(socket.id);
+        const participant = voiceRoom.participants.get(userId);
         if (participant) {
           participant.isSpeaking = isSpeaking && !participant.isMuted;
           participant.volume = volume;
@@ -321,7 +315,7 @@ class VoiceHandlers {
       // Update voice room participant
       const voiceRoom = this.voiceRooms.get(roomId);
       if (voiceRoom) {
-        const participant = voiceRoom.participants.get(socket.id);
+        const participant = voiceRoom.participants.get(userId);
         if (participant) {
           participant.connectionQuality = quality;
         }
@@ -355,10 +349,8 @@ class VoiceHandlers {
       const voiceRoom = this.voiceRooms.get(user.roomId);
       if (!voiceRoom) return;
 
-      // Find the target participant in voice room
-      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
-        String(p.userId) === String(targetUserId)
-      );
+      // Find the target participant in voice room by userId key
+      const targetParticipant = voiceRoom.participants.get(targetUserId);
       
       if (!targetParticipant) return;
 
@@ -426,7 +418,7 @@ class VoiceHandlers {
     // Remove from voice room
     const voiceRoom = this.voiceRooms.get(roomId);
     if (voiceRoom) {
-      voiceRoom.participants.delete(socket.id);
+      voiceRoom.participants.delete(user.userId);
       
       // Create updated participant data for remaining users
       const participantData = Array.from(voiceRoom.participants.values()).map(p => ({
