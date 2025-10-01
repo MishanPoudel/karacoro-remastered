@@ -344,6 +344,7 @@ export const useSocket = () => {
 
   return {
     roomState,
+    socket: socketRef.current,
     joinRoom,
     sendChatMessage,
     addToQueue,

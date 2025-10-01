@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Mic, MicOff, Volume2, VolumeX, Users, Wifi, WifiOff, AlertTriangle, Settings, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { envLog } from '@/lib/config';
 
 export interface VoiceParticipant {
@@ -62,6 +63,16 @@ export function VoiceChat({
     socketRef.current = socket;
   }, [socket]);
 
+  const getCurrentSocket = useCallback(() => {
+    if (socketRef.current) return socketRef.current;
+    
+    if (typeof window !== 'undefined' && (window as any).__KARAOKE_SOCKET__) {
+      return (window as any).__KARAOKE_SOCKET__;
+    }
+    
+    return null;
+  }, []);
+
   useEffect(() => {
     const checkDemoMode = () => {
       if (typeof window !== 'undefined') {
@@ -75,15 +86,254 @@ export function VoiceChat({
     checkDemoMode();
   }, []);
 
-  const getCurrentSocket = useCallback(() => {
-    if (socketRef.current) return socketRef.current;
-    
-    if (typeof window !== 'undefined' && (window as any).__KARAOKE_SOCKET__) {
-      return (window as any).__KARAOKE_SOCKET__;
-    }
-    
-    return null;
-  }, []);
+  // Socket event listeners
+  useEffect(() => {
+    const currentSocket = getCurrentSocket();
+    if (!currentSocket || isDemoMode) return;
+
+    // Local helper functions
+    const updateConnectionQuality = (peerId: string, pc: RTCPeerConnection) => {
+      let quality: 'good' | 'medium' | 'poor' = 'good';
+      
+      switch (pc.connectionState) {
+        case 'connected':
+          quality = 'good';
+          break;
+        case 'connecting':
+          quality = 'medium';
+          break;
+        case 'disconnected':
+        case 'failed':
+          quality = 'poor';
+          break;
+      }
+
+      setParticipants(prev => prev.map(p => 
+        p.id === peerId 
+          ? { ...p, connectionQuality: quality }
+          : p
+      ));
+    };
+
+    const handleRemoteStream = (peerId: string, stream: MediaStream) => {
+      let audioElement = document.querySelector(`audio[data-participant="${peerId}"]`) as HTMLAudioElement;
+      
+      if (!audioElement) {
+        audioElement = document.createElement('audio');
+        audioElement.setAttribute('data-participant', peerId);
+        audioElement.autoplay = true;
+        audioElement.style.display = 'none';
+        
+        const participant = participants.find(p => p.id === peerId);
+        const volume = participant?.userVolume ?? masterVolume;
+        audioElement.volume = volume / 100;
+        
+        document.body.appendChild(audioElement);
+      }
+
+      audioElement.srcObject = stream;
+      envLog.info(`Remote stream connected for ${peerId}`);
+    };
+
+    // Local peer connection creation function
+    const createLocalPeerConnection = async (peerId: string, isInitiator: boolean): Promise<RTCPeerConnection | null> => {
+      if (isDemoMode) {
+        return null;
+      }
+
+      const pc = new RTCPeerConnection({
+        iceServers: ICE_SERVERS,
+        iceCandidatePoolSize: 10
+      });
+
+      if (localStreamRef.current) {
+        localStreamRef.current.getTracks().forEach(track => {
+          if (localStreamRef.current) {
+            pc.addTrack(track, localStreamRef.current);
+          }
+        });
+      }
+
+      pc.ontrack = (event) => {
+        const [remoteStream] = event.streams;
+        handleRemoteStream(peerId, remoteStream);
+      };
+
+      pc.onicecandidate = (event) => {
+        if (event.candidate) {
+          currentSocket.emit('voice_ice_candidate', {
+            targetUserId: peerId,
+            candidate: event.candidate.toJSON()
+          });
+        }
+      };
+
+      pc.onconnectionstatechange = () => {
+        envLog.debug(`Connection state with ${peerId}:`, pc.connectionState);
+        updateConnectionQuality(peerId, pc);
+      };
+
+      peerConnectionsRef.current.set(peerId, pc);
+
+      if (isInitiator) {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        
+        currentSocket.emit('voice_offer', {
+          targetUserId: peerId,
+          offer: offer
+        });
+      }
+
+      envLog.info(`Peer connection created with ${peerId}`);
+      return pc;
+    };
+
+    const handleVoiceJoin = async (data: { userId: string; participants: VoiceParticipant[] }) => {
+      envLog.info('User joined voice chat:', {
+        joinedUserId: data.userId,
+        currentUserId: userId,
+        isCurrentUser: data.userId === userId,
+        participants: data.participants?.map(p => ({ id: p.id, isMuted: p.isMuted })),
+        participantCount: data.participants?.length || 0,
+        isConnected
+      });
+      
+      if (data.participants) {
+        setParticipants(data.participants);
+        
+        // If this is not the current user joining, initiate peer connection
+        if (data.userId !== userId && isConnected) {
+          envLog.info('Initiating peer connection with new user:', data.userId);
+          try {
+            await createLocalPeerConnection(data.userId, true);
+          } catch (error) {
+            envLog.error('Failed to create peer connection with new user:', error);
+          }
+        }
+        
+        // If this is the current user joining, initiate connections with all existing users
+        if (data.userId === userId && data.participants.length > 1) {
+          const otherUsers = data.participants.filter(p => p.id !== userId);
+          envLog.info('Current user joining - connecting to existing users:', {
+            otherUsers: otherUsers.map(u => u.id),
+            totalParticipants: data.participants.length
+          });
+          
+          for (const participant of otherUsers) {
+            try {
+              await createLocalPeerConnection(participant.id, true);
+            } catch (error) {
+              envLog.error(`Failed to create peer connection with ${participant.id}:`, error);
+            }
+          }
+        }
+      }
+    };
+
+    const handleVoiceLeave = (data: { userId: string; participants: VoiceParticipant[] }) => {
+      envLog.info('User left voice chat:', data.userId);
+      
+      // Clean up peer connection for the user who left
+      const pc = peerConnectionsRef.current.get(data.userId);
+      if (pc) {
+        pc.close();
+        peerConnectionsRef.current.delete(data.userId);
+      }
+      
+      // Remove audio element for the user who left
+      const audioElement = document.querySelector(`audio[data-participant="${data.userId}"]`);
+      if (audioElement) {
+        audioElement.remove();
+      }
+      
+      if (data.participants) {
+        setParticipants(data.participants);
+      }
+    };
+
+    const handleVoiceOffer = async (data: { fromUserId: string; offer: RTCSessionDescriptionInit }) => {
+      try {
+        envLog.info('Received voice offer from:', data.fromUserId);
+        
+        const pc = await createLocalPeerConnection(data.fromUserId, false);
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+          
+          currentSocket.emit('voice_answer', {
+            targetUserId: data.fromUserId,
+            answer: answer
+          });
+        }
+      } catch (error) {
+        envLog.error('Error handling voice offer:', error);
+      }
+    };
+
+    const handleVoiceAnswer = async (data: { fromUserId: string; answer: RTCSessionDescriptionInit }) => {
+      try {
+        envLog.info('Received voice answer from:', data.fromUserId);
+        
+        const pc = peerConnectionsRef.current.get(data.fromUserId);
+        if (pc) {
+          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
+        }
+      } catch (error) {
+        envLog.error('Error handling voice answer:', error);
+      }
+    };
+
+    const handleVoiceIceCandidate = async (data: { fromUserId: string; candidate: RTCIceCandidateInit }) => {
+      try {
+        envLog.debug('Received ICE candidate from:', data.fromUserId);
+        
+        const pc = peerConnectionsRef.current.get(data.fromUserId);
+        if (pc) {
+          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
+        }
+      } catch (error) {
+        envLog.error('Error handling ICE candidate:', error);
+      }
+    };
+
+    const handleVoiceActivity = (data: { userId: string; isSpeaking: boolean; volume: number }) => {
+      setParticipants(prev => prev.map(p => 
+        p.id === data.userId 
+          ? { ...p, isSpeaking: data.isSpeaking, volume: data.volume }
+          : p
+      ));
+    };
+
+    const handleVoiceMuteStatus = (data: { userId: string; isMuted: boolean }) => {
+      setParticipants(prev => prev.map(p => 
+        p.id === data.userId 
+          ? { ...p, isMuted: data.isMuted, isSpeaking: false }
+          : p
+      ));
+    };
+
+    // Register event listeners
+    currentSocket.on('voice_user_joined', handleVoiceJoin);
+    currentSocket.on('voice_user_left', handleVoiceLeave);
+    currentSocket.on('voice_offer', handleVoiceOffer);
+    currentSocket.on('voice_answer', handleVoiceAnswer);
+    currentSocket.on('voice_ice_candidate', handleVoiceIceCandidate);
+    currentSocket.on('voice_activity', handleVoiceActivity);
+    currentSocket.on('voice_mute_status', handleVoiceMuteStatus);
+
+    // Cleanup
+    return () => {
+      currentSocket.off('voice_user_joined', handleVoiceJoin);
+      currentSocket.off('voice_user_left', handleVoiceLeave);
+      currentSocket.off('voice_offer', handleVoiceOffer);
+      currentSocket.off('voice_answer', handleVoiceAnswer);
+      currentSocket.off('voice_ice_candidate', handleVoiceIceCandidate);
+      currentSocket.off('voice_activity', handleVoiceActivity);
+      currentSocket.off('voice_mute_status', handleVoiceMuteStatus);
+    };
+  }, [getCurrentSocket, isDemoMode]);
 
   const checkMicrophonePermission = async () => {
     try {
@@ -324,10 +574,10 @@ export function VoiceChat({
       envLog.info('Connecting to voice chat...');
       
       if (isDemoMode) {
-        // toast.info('🎭 Demo Voice Chat', {
-        //   description: 'Voice chat is simulated in demo mode',
-        //   duration: 3000,
-        // });
+        toast.info('🎭 Demo Voice Chat', {
+          description: 'Voice chat is simulated in demo mode',
+          duration: 3000,
+        });
       }
       
       const stream = await requestMicrophoneAccess();
@@ -386,14 +636,14 @@ export function VoiceChat({
       const message = isDemoMode 
         ? 'Connected to demo voice chat!' 
         : 'Connected to voice chat!';
-      // toast.success(message);
+      toast.success(message);
       envLog.info('Voice chat connected successfully');
     } catch (error) {
       envLog.error('Failed to connect to voice chat:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to connect to voice chat';
       setError(errorMessage);
       setIsConnecting(false);
-      // toast.error(errorMessage);
+      toast.error(errorMessage);
     }
   };
 
@@ -451,7 +701,7 @@ export function VoiceChat({
       const message = isDemoMode 
         ? 'Disconnected from demo voice chat' 
         : 'Disconnected from voice chat';
-      // toast.info(message);
+      toast.info(message);
       envLog.info('Voice chat disconnected');
     } catch (error) {
       envLog.error('Error disconnecting from voice chat:', error);
@@ -460,7 +710,7 @@ export function VoiceChat({
 
   const toggleMute = () => {
     if (!localStreamRef.current || !isConnected) {
-      // toast.warning('Not connected to voice chat');
+      toast.warning('Not connected to voice chat');
       return;
     }
 

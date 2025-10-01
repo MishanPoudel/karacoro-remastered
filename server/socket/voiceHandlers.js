@@ -11,12 +11,22 @@ class VoiceHandlers {
 
   // Voice chat join
   handleVoiceJoin(socket, { roomId, userId }) {
+  console.log('[VOICE DEBUG] handleVoiceJoin', { roomId, userId, socketId: socket.id });
     try {
       const user = this.users.get(socket.id);
       if (!user || user.roomId !== roomId) {
         socket.emit('error', { message: 'Must be in room to join voice chat' });
         return;
       }
+
+      // Debug logging
+      logger.info('Voice join attempt', {
+        socketId: socket.id,
+        clientUserId: userId,
+        userObjectUserId: user.userId,
+        username: user.username,
+        roomId
+      });
 
       const room = this.rooms.get(roomId);
       if (!room) {
@@ -48,7 +58,8 @@ class VoiceHandlers {
 
       // Add to voice room participants
       voiceRoom.participants.set(socket.id, {
-        userId: user.username,
+        userId: userId, // Use the actual userId passed from client
+        username: user.username,
         socketId: socket.id,
         isMuted: true,
         isSpeaking: false,
@@ -57,26 +68,32 @@ class VoiceHandlers {
 
       updateRoomActivity(roomId, this.rooms);
 
+
       // Get list of existing voice participants (excluding the new user)
       const existingParticipants = Array.from(voiceRoom.participants.values())
         .filter(p => p.socketId !== socket.id);
+      console.log('[VOICE DEBUG] Existing participants before join', { roomId, userId, existingParticipants });
 
-      // Notify existing voice participants about new user
-      if (existingParticipants.length > 0) {
-        socket.to(roomId).emit('voice_user_joined', {
-          userId: user.username
-        });
+      // Create participant data for client
+      const participantData = Array.from(voiceRoom.participants.values()).map(p => ({
+        id: p.userId,
+        username: p.username,
+        isMuted: p.isMuted,
+        isSpeaking: p.isSpeaking,
+        connectionQuality: p.connectionQuality
+      }));
+      console.log('[VOICE DEBUG] All participants after join', { roomId, userId, participantData });
 
-        // Send existing participants list to new user
-        existingParticipants.forEach(participant => {
-          socket.emit('voice_user_joined', {
-            userId: participant.userId
-          });
-        });
-      }
+      // Notify all users in the room about updated participant list
+      this.io.to(roomId).emit('voice_user_joined', {
+        userId: userId,
+        username: user.username,
+        participants: participantData
+      });
 
       logger.info('User joined voice chat', { 
         username: user.username, 
+        userId,
         roomId, 
         socketId: socket.id,
         totalVoiceParticipants: voiceRoom.participants.size
@@ -89,32 +106,50 @@ class VoiceHandlers {
 
   // Voice offer (WebRTC signaling)
   handleVoiceOffer(socket, { targetUserId, offer }) {
+  const user = this.users.get(socket.id);
+  console.log('[VOICE DEBUG] handleVoiceOffer', { roomId: user?.roomId, fromUserId: user?.userId, targetUserId });
     try {
       const user = this.users.get(socket.id);
       if (!user) return;
 
-      // Find target user by username in the same room
-      const targetUser = Array.from(this.users.values()).find(u => 
-        u.username === targetUserId && u.roomId === user.roomId && u.voiceConnected
+      // Find target user by userId in the same room's voice participants
+      const voiceRoom = this.voiceRooms.get(user.roomId);
+      if (!voiceRoom) return;
+
+      // Debug logging
+      logger.debug('Voice offer attempt', {
+        fromUserId: user.userId,
+        targetUserId,
+        voiceRoomParticipants: Array.from(voiceRoom.participants.values()).map(p => ({
+          userId: p.userId,
+          socketId: p.socketId,
+          username: p.username
+        }))
+      });
+
+      // Find the target participant in voice room
+      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
+        String(p.userId) === String(targetUserId)
       );
       
-      if (!targetUser) {
-        logger.warn('Target user not found for voice offer', { 
-          from: user.username, 
-          to: targetUserId, 
-          roomId: user.roomId 
+      if (!targetParticipant) {
+        logger.warn('Target user not found in voice chat', { 
+          targetUserId, 
+          roomId: user.roomId,
+          availableParticipants: Array.from(voiceRoom.participants.values()).map(p => p.userId)
         });
         return;
       }
 
-      // Forward offer to target user
-      this.io.to(targetUser.socketId).emit('voice_offer', {
-        offer,
-        userId: user.username
+      // Send offer to target user - use userId consistently
+      socket.to(targetParticipant.socketId).emit('voice_offer', {
+        fromUserId: user.userId,
+        offer
       });
 
       logger.debug('Voice offer forwarded', { 
         from: user.username, 
+        fromUserId: user.userId,
         to: targetUserId, 
         roomId: user.roomId
       });
@@ -125,32 +160,40 @@ class VoiceHandlers {
 
   // Voice answer (WebRTC signaling)
   handleVoiceAnswer(socket, { targetUserId, answer }) {
+  const user = this.users.get(socket.id);
+  console.log('[VOICE DEBUG] handleVoiceAnswer', { roomId: user?.roomId, fromUserId: user?.userId, targetUserId });
     try {
       const user = this.users.get(socket.id);
       if (!user) return;
 
-      // Find target user by username in the same room
-      const targetUser = Array.from(this.users.values()).find(u => 
-        u.username === targetUserId && u.roomId === user.roomId && u.voiceConnected
+      // Find target user by userId in the same room's voice participants
+      const voiceRoom = this.voiceRooms.get(user.roomId);
+      if (!voiceRoom) return;
+
+      // Find the target participant in voice room
+      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
+        String(p.userId) === String(targetUserId)
       );
       
-      if (!targetUser) {
+      if (!targetParticipant) {
         logger.warn('Target user not found for voice answer', { 
           from: user.username, 
           to: targetUserId, 
-          roomId: user.roomId 
+          roomId: user.roomId,
+          availableParticipants: Array.from(voiceRoom.participants.values()).map(p => p.userId)
         });
         return;
       }
 
-      // Forward answer to target user
-      this.io.to(targetUser.socketId).emit('voice_answer', {
-        answer,
-        userId: user.username
+      // Forward answer to target user - use userId consistently
+      this.io.to(targetParticipant.socketId).emit('voice_answer', {
+        fromUserId: user.userId,
+        answer
       });
 
       logger.debug('Voice answer forwarded', { 
         from: user.username, 
+        fromUserId: user.userId,
         to: targetUserId, 
         roomId: user.roomId
       });
@@ -165,21 +208,26 @@ class VoiceHandlers {
       const user = this.users.get(socket.id);
       if (!user) return;
 
-      // Find target user by username in the same room
-      const targetUser = Array.from(this.users.values()).find(u => 
-        u.username === targetUserId && u.roomId === user.roomId && u.voiceConnected
+      // Find target user by userId in the same room's voice participants
+      const voiceRoom = this.voiceRooms.get(user.roomId);
+      if (!voiceRoom) return;
+
+      // Find the target participant in voice room
+      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
+        String(p.userId) === String(targetUserId)
       );
       
-      if (!targetUser) return;
+      if (!targetParticipant) return;
 
       // Forward ICE candidate to target user
-      this.io.to(targetUser.socketId).emit('voice_ice_candidate', {
-        candidate,
-        userId: user.username
+      this.io.to(targetParticipant.socketId).emit('voice_ice_candidate', {
+        fromUserId: user.userId,
+        candidate
       });
 
       logger.debug('ICE candidate forwarded', { 
         from: user.username, 
+        fromUserId: user.userId,
         to: targetUserId, 
         roomId: user.roomId
       });
@@ -210,14 +258,15 @@ class VoiceHandlers {
 
       updateRoomActivity(roomId, this.rooms);
 
-      // Notify other users in the room
+      // Notify other users in the room - use userId consistently
       socket.to(roomId).emit('voice_mute_status', {
-        userId: user.username,
+        userId: user.userId,
         isMuted
       });
 
       logger.debug('Voice mute status updated', { 
         username: user.username, 
+        userId: user.userId,
         isMuted, 
         roomId, 
         socketId: socket.id 
@@ -243,15 +292,16 @@ class VoiceHandlers {
         }
       }
 
-      // Forward voice activity to other users in the room
+      // Forward voice activity to other users in the room - use userId consistently
       socket.to(roomId).emit('voice_activity', {
-        userId: user.username,
+        userId: user.userId,
         isSpeaking: isSpeaking && !user.isMuted,
         volume
       });
 
       logger.debug('Voice activity detected', { 
         username: user.username, 
+        userId: user.userId,
         isSpeaking, 
         volume,
         roomId, 
@@ -277,14 +327,15 @@ class VoiceHandlers {
         }
       }
 
-      // Notify other users about connection quality
+      // Notify other users about connection quality - use userId consistently
       socket.to(roomId).emit('voice_connection_quality', {
-        userId: user.username,
+        userId: user.userId,
         quality
       });
 
       logger.debug('Voice connection quality updated', { 
         username: user.username, 
+        userId: user.userId,
         quality, 
         roomId, 
         socketId: socket.id 
@@ -300,20 +351,25 @@ class VoiceHandlers {
       const user = this.users.get(socket.id);
       if (!user) return;
 
-      // Find target user by username in the same room
-      const targetUser = Array.from(this.users.values()).find(u => 
-        u.username === targetUserId && u.roomId === user.roomId && u.voiceConnected
+      // Find target user by userId in the same room's voice participants
+      const voiceRoom = this.voiceRooms.get(user.roomId);
+      if (!voiceRoom) return;
+
+      // Find the target participant in voice room
+      const targetParticipant = Array.from(voiceRoom.participants.values()).find(p => 
+        String(p.userId) === String(targetUserId)
       );
       
-      if (!targetUser) return;
+      if (!targetParticipant) return;
 
-      // Notify target user to reinitiate connection
-      this.io.to(targetUser.socketId).emit('voice_reconnect_request', {
-        userId: user.username
+      // Notify target user to reinitiate connection - use userId consistently
+      this.io.to(targetParticipant.socketId).emit('voice_reconnect_request', {
+        userId: user.userId
       });
 
       logger.info('Voice reconnection requested', { 
         from: user.username, 
+        fromUserId: user.userId,
         to: targetUserId, 
         roomId: user.roomId
       });
@@ -332,6 +388,7 @@ class VoiceHandlers {
 
       logger.info('User left voice chat', { 
         username: user.username, 
+        userId: user.userId,
         roomId, 
         socketId: socket.id
       });
@@ -351,6 +408,7 @@ class VoiceHandlers {
 
       logger.info('User disconnected from voice chat', { 
         username: user.username, 
+        userId: user.userId,
         roomId, 
         socketId: socket.id
       });
@@ -370,19 +428,27 @@ class VoiceHandlers {
     if (voiceRoom) {
       voiceRoom.participants.delete(socket.id);
       
+      // Create updated participant data for remaining users
+      const participantData = Array.from(voiceRoom.participants.values()).map(p => ({
+        id: p.userId,
+        username: p.username,
+        isMuted: p.isMuted,
+        isSpeaking: p.isSpeaking,
+        connectionQuality: p.connectionQuality
+      }));
+      
+      // Notify other users in the room about user leaving with updated list
+      socket.to(roomId).emit('voice_user_left', {
+        userId: user.userId,
+        participants: participantData
+      });
+      
       // Clean up empty voice room
       if (voiceRoom.participants.size === 0) {
         this.voiceRooms.delete(roomId);
         logger.debug('Voice room cleaned up', { roomId });
       }
     }
-
-    updateRoomActivity(roomId, this.rooms);
-
-    // Notify other users in the room about voice disconnection
-    socket.to(roomId).emit('voice_user_left', {
-      userId: user.username
-    });
   }
 
   // Get voice room statistics

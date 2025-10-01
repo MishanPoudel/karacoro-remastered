@@ -122,13 +122,15 @@ const createRoom = (roomId, hostId) => ({
  * @param {string} username - Username
  * @param {string} roomId - Room ID
  * @param {boolean} isHost - Whether user is host
+ * @param {string} userId - User ID for voice chat
  * @returns {object} User object
  */
-const createUser = (socketId, username, roomId, isHost = false) => ({
+const createUser = (socketId, username, roomId, isHost = false, userId = null) => ({
   socketId,
   username: username.trim(),
   roomId,
   isHost,
+  userId: userId || socketId, // Use provided userId or fallback to socketId
   joinedAt: new Date(),
   lastActivity: new Date(),
   voiceConnected: false,

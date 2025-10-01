@@ -15,6 +15,7 @@ import { VideoPlayer } from '@/components/room/VideoPlayer';
 import { VideoQueue } from '@/components/room/VideoQueue';
 import { ChatPanel } from '@/components/room/ChatPanel';
 import { UserPanel } from '@/components/room/UserPanel';
+import { VoiceChat } from '@/components/room/VoiceChat';
 
 export default function RoomPage() {
   // Persistent userId logic
@@ -37,6 +38,7 @@ export default function RoomPage() {
 
   const {
     roomState,
+    socket,
     joinRoom,
     sendChatMessage,
     addToQueue,
@@ -80,10 +82,10 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="container mx-auto px-4 py-6">
+    <div className="min-h-screen bg-black text-white overflow-x-hidden">
+      <div className="container mx-auto px-4 py-6 max-w-full overflow-x-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-6 overflow-hidden">
           <Link href="/">
             <Button
               variant="outline"
@@ -132,9 +134,9 @@ export default function RoomPage() {
         </div>
 
         {/* Main Content Layout */}
-        <div className="grid lg:grid-cols-12 gap-6">
+        <div className="grid lg:grid-cols-12 gap-6 overflow-hidden">
           {/* Left Column - Video Player and Queue */}
-          <div className="lg:col-span-8 space-y-6">
+          <div className="lg:col-span-8 space-y-6 min-w-0 overflow-hidden">
             <VideoPlayer
               currentVideo={roomState.currentVideo}
               videoState={roomState.videoState}
@@ -144,16 +146,24 @@ export default function RoomPage() {
               onSkip={skipVideo}
             />
 
-            <VideoQueue
-              queue={roomState.queue}
-              isHost={roomState.isHost}
-              onAddToQueue={addToQueue}
-              onRemoveFromQueue={removeFromQueue}
-            />
+            <div className="overflow-hidden">
+              <VideoQueue
+                queue={roomState.queue}
+                isHost={roomState.isHost}
+                onAddToQueue={addToQueue}
+                onRemoveFromQueue={removeFromQueue}
+              />
+            </div>
           </div>
 
           {/* Right Sidebar - Voice Chat, Users and Chat (Desktop Only) */}
-          <div className="lg:col-span-4 space-y-6 hidden lg:block">
+          <div className="lg:col-span-4 space-y-6 hidden lg:block min-w-0 overflow-hidden">
+            <VoiceChat
+              socket={socket}
+              roomId={roomId}
+              userId={getOrCreateUserId()}
+            />
+            
             <UserPanel
               users={roomState.users}
               currentUsername={roomState.username}
@@ -170,21 +180,25 @@ export default function RoomPage() {
         </div>
 
         {/* Mobile-only tabs */}
-        <div className="lg:hidden mt-6">
+        <div className="lg:hidden mt-6 overflow-hidden">
           <Tabs defaultValue="chat" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="chat">
-                <MessageCircle className="w-4 h-4 mr-1" />
-                Chat ({roomState.chatHistory.length})
+            <TabsList className="grid w-full grid-cols-3 overflow-hidden">
+              <TabsTrigger value="chat" className="overflow-hidden">
+                <MessageCircle className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="truncate">Chat</span>
               </TabsTrigger>
-              <TabsTrigger value="users">
-                <Users className="w-4 h-4 mr-1" />
-                Users ({roomState.users.length})
+              <TabsTrigger value="users" className="overflow-hidden">
+                <Users className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="truncate">Users</span>
+              </TabsTrigger>
+              <TabsTrigger value="voice" className="overflow-hidden">
+                <Music className="w-4 h-4 mr-1 flex-shrink-0" />
+                <span className="truncate">Voice</span>
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="chat" className="mt-4">
-              <div className="h-80">
+            <TabsContent value="chat" className="mt-4 overflow-hidden">
+              <div className="h-80 overflow-hidden">
                 <ChatPanel
                   messages={roomState.chatHistory}
                   onSendMessage={sendChatMessage}
@@ -197,6 +211,14 @@ export default function RoomPage() {
                 users={roomState.users}
                 currentUsername={roomState.username}
                 isHost={roomState.isHost}
+              />
+            </TabsContent>
+
+            <TabsContent value="voice" className="mt-4">
+              <VoiceChat
+                socket={socket}
+                roomId={roomId}
+                userId={getOrCreateUserId()}
               />
             </TabsContent>
           </Tabs>

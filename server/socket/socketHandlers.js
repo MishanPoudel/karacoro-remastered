@@ -62,7 +62,7 @@ class SocketHandlers {
           socket.emit('error', { message: 'Username already taken in this room' });
           return;
         }
-        user = createUser(socket.id, username, roomId, isHost);
+        user = createUser(socket.id, username, roomId, isHost, userId);
         this.users.set(socket.id, user);
       }
 
