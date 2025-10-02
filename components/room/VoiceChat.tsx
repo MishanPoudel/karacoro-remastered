@@ -333,7 +333,7 @@ export function VoiceChat({
       currentSocket.off('voice_activity', handleVoiceActivity);
       currentSocket.off('voice_mute_status', handleVoiceMuteStatus);
     };
-  }, [getCurrentSocket, isDemoMode]);
+  }, [getCurrentSocket, isDemoMode, userId, isConnected, participants]);
 
   const checkMicrophonePermission = async () => {
     try {
