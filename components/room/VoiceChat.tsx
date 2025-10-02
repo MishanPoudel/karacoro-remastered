@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { Mic, MicOff, Volume2, VolumeX, Users, Wifi, WifiOff, AlertTriangle, Settings, Loader2 } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, Users, Wifi, WifiOff, TriangleAlert as AlertTriangle, Settings, Loader as Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { envLog } from '@/lib/config';
 
