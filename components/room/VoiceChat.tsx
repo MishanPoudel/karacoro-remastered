@@ -11,6 +11,7 @@ import { envLog } from '@/lib/config';
 
 export interface VoiceParticipant {
   id: string;
+  username?: string;
   isMuted: boolean;
   isSpeaking?: boolean;
   connectionQuality?: 'good' | 'medium' | 'poor';
@@ -982,7 +983,7 @@ export function VoiceChat({
                         }`} />
                         
                         <span className="text-sm text-white truncate">
-                          {participant.id}
+                          {participant.username || participant.id}
                           {participant.id === userId && ' (You)'}
                         </span>
                         
