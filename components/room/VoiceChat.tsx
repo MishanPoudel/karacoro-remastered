@@ -198,34 +198,27 @@ export function VoiceChat({
         participantCount: data.participants?.length || 0,
         isConnected
       });
-      
+
       if (data.participants) {
         setParticipants(data.participants);
-        
-        // If this is not the current user joining, initiate peer connection
-        if (data.userId !== userId && isConnected) {
-          envLog.info('Initiating peer connection with new user:', data.userId);
-          try {
-            await createLocalPeerConnection(data.userId, true);
-          } catch (error) {
-            envLog.error('Failed to create peer connection with new user:', error);
-          }
-        }
-        
-        // If this is the current user joining, initiate connections with all existing users
-        if (data.userId === userId && data.participants.length > 1) {
+
+        if (data.userId === userId && isConnected) {
           const otherUsers = data.participants.filter(p => p.id !== userId);
-          envLog.info('Current user joining - connecting to existing users:', {
-            otherUsers: otherUsers.map(u => u.id),
-            totalParticipants: data.participants.length
-          });
-          
+          envLog.info('Current user confirmed in voice - connecting to others:', otherUsers.map(u => u.id));
+
           for (const participant of otherUsers) {
             try {
               await createLocalPeerConnection(participant.id, true);
             } catch (error) {
               envLog.error(`Failed to create peer connection with ${participant.id}:`, error);
             }
+          }
+        } else if (data.userId !== userId && isConnected) {
+          envLog.info('New user joined - initiating peer connection:', data.userId);
+          try {
+            await createLocalPeerConnection(data.userId, true);
+          } catch (error) {
+            envLog.error('Failed to create peer connection with new user:', error);
           }
         }
       }
@@ -333,7 +326,7 @@ export function VoiceChat({
       currentSocket.off('voice_activity', handleVoiceActivity);
       currentSocket.off('voice_mute_status', handleVoiceMuteStatus);
     };
-  }, [getCurrentSocket, isDemoMode, userId, isConnected, participants]);
+  }, [getCurrentSocket, isDemoMode, userId, isConnected]);
 
   const checkMicrophonePermission = async () => {
     try {
