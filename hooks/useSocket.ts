@@ -64,46 +64,46 @@ export const useSocket = () => {
     if (socketRef.current) return;
 
     const getSocketUrl = () => {
-      console.log('🔍 [useSocket] Getting socket URL...');
+  // console.log('🔍 [useSocket] Getting socket URL...');
       
       if (process.env.NEXT_PUBLIC_SOCKET_URL) {
-        console.log('✅ [useSocket] Using NEXT_PUBLIC_SOCKET_URL:', process.env.NEXT_PUBLIC_SOCKET_URL);
+  // console.log('✅ [useSocket] Using NEXT_PUBLIC_SOCKET_URL:', process.env.NEXT_PUBLIC_SOCKET_URL);
         return process.env.NEXT_PUBLIC_SOCKET_URL;
       }
       
       if (typeof window === 'undefined') {
-        console.log('🌐 [useSocket] Server-side rendering, using default localhost:3001');
+  // console.log('🌐 [useSocket] Server-side rendering, using default localhost:3001');
         return 'http://localhost:3001';
       }
       
       const currentUrl = window.location;
-      console.log('🌐 [useSocket] Current window location:', {
-        hostname: currentUrl.hostname,
-        protocol: currentUrl.protocol,
-        port: currentUrl.port,
-        href: currentUrl.href
-      });
+      // console.log('🌐 [useSocket] Current window location:', {
+      //   hostname: currentUrl.hostname,
+      //   protocol: currentUrl.protocol,
+      //   port: currentUrl.port,
+      //   href: currentUrl.href
+      // });
       
       if (currentUrl.hostname.includes('webcontainer-api.io')) {
         const socketHostname = currentUrl.hostname.replace(/--3000--/, '--3001--');
-        console.log('📦 [useSocket] WebContainer detected, using:', `http://${socketHostname}`);
+  // console.log('📦 [useSocket] WebContainer detected, using:', `http://${socketHostname}`);
         return `http://${socketHostname}`;
       }
       
       if (currentUrl.hostname === 'localhost') {
-        console.log('🏠 [useSocket] Localhost detected, using: http://localhost:3001');
+  // console.log('🏠 [useSocket] Localhost detected, using: http://localhost:3001');
         return 'http://localhost:3001';
       }
       
       // Production fallback
       const protocol = currentUrl.protocol === 'https:' ? 'wss:' : 'ws:';
       const fallbackUrl = `${protocol}//${currentUrl.hostname}`;
-      console.log('🚀 [useSocket] Production fallback:', fallbackUrl);
+  // console.log('🚀 [useSocket] Production fallback:', fallbackUrl);
       return fallbackUrl;
     };
 
     const socketUrl = getSocketUrl();
-    console.log('🔌 [useSocket] Attempting to connect to:', socketUrl);
+  // console.log('🔌 [useSocket] Attempting to connect to:', socketUrl);
     
     const socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
@@ -120,25 +120,25 @@ export const useSocket = () => {
 
     // Connection events
     socket.on('connect', () => {
-      console.log('✅ [useSocket] Socket connected successfully:', socket.id);
-      console.log('✅ [useSocket] Socket transport:', socket.io.engine.transport.name);
+  // console.log('✅ [useSocket] Socket connected successfully:', socket.id);
+  // console.log('✅ [useSocket] Socket transport:', socket.io.engine.transport.name);
       setRoomState(prev => ({ ...prev, connected: true }));
     });
 
     socket.on('disconnect', (reason) => {
-      console.log('❌ [useSocket] Socket disconnected:', reason);
+  // console.log('❌ [useSocket] Socket disconnected:', reason);
       setRoomState(prev => ({ ...prev, connected: false }));
     });
 
     socket.on('connect_error', (error) => {
-      console.error('❌ [useSocket] Connection error:', error);
+  // console.error('❌ [useSocket] Connection error:', error);
       setRoomState(prev => ({ ...prev, connected: false }));
     });
 
     // Room events
     socket.on('room_joined', (data) => {
-      console.log('Client: Room joined:', data.roomId);
-      console.log('Client: Initial chat history length:', data.chatHistory?.length || 0);
+  // console.log('Client: Room joined:', data.roomId);
+  // console.log('Client: Initial chat history length:', data.chatHistory?.length || 0);
       setRoomState(prev => ({
         ...prev,
         roomId: data.roomId,
@@ -210,7 +210,7 @@ export const useSocket = () => {
     });
 
     socket.on('video_sync', (data) => {
-      console.log('🎥 [useSocket] Video sync received:', data);
+  // console.log('🎥 [useSocket] Video sync received:', data);
       setRoomState(prev => ({
         ...prev,
         videoState: {
@@ -223,7 +223,7 @@ export const useSocket = () => {
 
     // Host events
     socket.on('host_changed', (data) => {
-      console.log('👑 [useSocket] Host changed:', data);
+  // console.log('👑 [useSocket] Host changed:', data);
       setRoomState(prev => {
         const updatedUsers = prev.users.map(user => ({
           ...user,
@@ -242,7 +242,7 @@ export const useSocket = () => {
     });
 
     socket.on('host_migration_recovery', (data) => {
-      console.log('🔄 [useSocket] Host migration recovery:', data);
+  // console.log('🔄 [useSocket] Host migration recovery:', data);
       setRoomState(prev => ({
         ...prev,
         currentVideo: data.currentVideo,
@@ -250,29 +250,29 @@ export const useSocket = () => {
         queue: data.queue,
         isHost: true
       }));
-      console.log('✅ [useSocket] You are now the host. Video sync restored.');
+  // console.log('✅ [useSocket] You are now the host. Video sync restored.');
     });
 
     // Error handling
     socket.on('error', (error) => {
-      console.error('❌ [useSocket] Socket error:', error);
+  // console.error('❌ [useSocket] Socket error:', error);
     });
 
     // Reconnection events
     socket.on('reconnect', (attemptNumber) => {
-      console.log('🔄 [useSocket] Reconnected after', attemptNumber, 'attempts');
+  // console.log('🔄 [useSocket] Reconnected after', attemptNumber, 'attempts');
     });
 
     socket.on('reconnect_attempt', (attemptNumber) => {
-      console.log('🔄 [useSocket] Reconnection attempt #', attemptNumber);
+  // console.log('🔄 [useSocket] Reconnection attempt #', attemptNumber);
     });
 
     socket.on('reconnect_error', (error) => {
-      console.error('❌ [useSocket] Reconnection error:', error);
+  // console.error('❌ [useSocket] Reconnection error:', error);
     });
 
     socket.on('reconnect_failed', () => {
-      console.error('❌ [useSocket] Failed to reconnect after all attempts');
+  // console.error('❌ [useSocket] Failed to reconnect after all attempts');
     });
 
     return () => {
@@ -285,7 +285,7 @@ export const useSocket = () => {
   // Socket methods
   const joinRoom = (roomId: string, username: string, userId?: string) => {
     if (socketRef.current) {
-      console.log('Joining room:', roomId, 'as:', username, 'userId:', userId);
+      // console.log('Joining room:', roomId, 'as:', username, 'userId:', userId);
       socketRef.current.emit('join_room', { roomId, username, userId });
     }
   };
@@ -322,14 +322,14 @@ export const useSocket = () => {
 
   const forceSyncAll = (videoState: { isPlaying: boolean; currentTime: number }) => {
     if (socketRef.current) {
-      console.log('🔄 [useSocket] Force syncing all participants:', videoState);
+      // console.log('🔄 [useSocket] Force syncing all participants:', videoState);
       socketRef.current.emit('force_sync_all', videoState);
     }
   };
 
   const requestVideoSync = () => {
     if (socketRef.current) {
-      console.log('🔄 [useSocket] Requesting video sync from host');
+      // console.log('🔄 [useSocket] Requesting video sync from host');
       socketRef.current.emit('request_video_sync');
     }
   };
