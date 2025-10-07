@@ -2,6 +2,7 @@ const express = require('express');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const dotenv = require('dotenv');
+const VoiceHandlers = require('./socket/voiceHandlers');
 
 // Load environment variables
 dotenv.config();
@@ -84,6 +85,10 @@ console.log('✅ [SERVER] Socket.IO initialized successfully');
 const rooms = new Map();
 const users = new Map();
 
+// Initialize voice handlers
+const voiceHandlers = new VoiceHandlers(io, rooms, users);
+console.log('🎤 [SERVER] Voice handlers initialized');
+
 function extractVideoId(url) {
   const patterns = [
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
@@ -110,9 +115,9 @@ io.on('connection', (socket) => {
     remoteAddress: socket.handshake.address
   });
 
-  socket.on('join_room', ({ roomId, username }) => {
+  socket.on('join_room', ({ roomId, username, userId }) => {
     try {
-      console.log(`👤 User ${username} joining room ${roomId}`);
+      console.log(`👤 User ${username} joining room ${roomId} with userId: ${userId}`);
       
       if (!roomId || !username) {
         socket.emit('error', { message: 'Room ID and username are required' });
@@ -140,7 +145,10 @@ io.on('connection', (socket) => {
         username: username.trim(),
         roomId,
         isHost,
-        joinedAt: new Date()
+        userId: userId || socket.id,
+        joinedAt: new Date(),
+        voiceConnected: false,
+        isMuted: true
       };
 
       users.set(socket.id, user);
@@ -422,6 +430,23 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Voice chat events
+  socket.on('voice_join', (data) => {
+    console.log('\n🎤 [SOCKET] ========================================');
+    console.log('🎤 [SOCKET] Received voice_join event');
+    console.log('🎤 [SOCKET] Data:', JSON.stringify(data, null, 2));
+    console.log('🎤 [SOCKET] From socket:', socket.id);
+    console.log('🎤 [SOCKET] Socket rooms:', Array.from(socket.rooms));
+    console.log('🎤 [SOCKET] ========================================\n');
+    voiceHandlers.handleVoiceJoin(socket, data);
+  });
+  
+  socket.on('voice_offer', (data) => voiceHandlers.handleVoiceOffer(socket, data));
+  socket.on('voice_answer', (data) => voiceHandlers.handleVoiceAnswer(socket, data));
+  socket.on('voice_ice_candidate', (data) => voiceHandlers.handleIceCandidate(socket, data));
+  socket.on('voice_toggle_mute', (data) => voiceHandlers.handleMuteStatus(socket, data));
+  socket.on('voice_leave', (data) => voiceHandlers.handleVoiceLeave(socket, data));
+
   socket.on('disconnect', (reason) => {
     // Ignore client namespace disconnects
     if (reason === 'client namespace disconnect') {
@@ -429,6 +454,7 @@ io.on('connection', (socket) => {
     }
     
     console.log('🔌 User disconnected:', socket.id, 'Reason:', reason);
+    voiceHandlers.handleVoiceDisconnect(socket);
     
     const user = users.get(socket.id);
     if (!user) return;

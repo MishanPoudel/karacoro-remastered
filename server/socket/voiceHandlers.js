@@ -6,24 +6,70 @@ class VoiceHandlers {
     this.io = io;
     this.rooms = rooms;
     this.users = users;
-    this.voiceRooms = new Map(); // Track voice-specific room data
+    this.voiceRooms = new Map();
+  }
+
+  handleVoiceOffer(socket, { roomId, targetUserId, offer }) {
+    const targetUser = Array.from(this.users.values()).find(u => u.userId === targetUserId);
+    if (targetUser) {
+      this.io.to(targetUser.socketId).emit('voice_offer', {
+        fromUserId: this.users.get(socket.id)?.userId,
+        offer,
+      });
+    }
+  }
+
+  handleVoiceAnswer(socket, { roomId, targetUserId, answer }) {
+    const targetUser = Array.from(this.users.values()).find(u => u.userId === targetUserId);
+    if (targetUser) {
+      this.io.to(targetUser.socketId).emit('voice_answer', {
+        fromUserId: this.users.get(socket.id)?.userId,
+        answer,
+      });
+    }
+  }
+
+  handleVoiceIceCandidate(socket, { roomId, targetUserId, candidate }) {
+    const targetUser = Array.from(this.users.values()).find(u => u.userId === targetUserId);
+    if (targetUser) {
+      this.io.to(targetUser.socketId).emit('voice_ice_candidate', {
+        fromUserId: this.users.get(socket.id)?.userId,
+        candidate,
+      });
+    }
   }
 
   // Voice chat join
   handleVoiceJoin(socket, { roomId, userId }) {
-  console.log('[VOICE DEBUG] handleVoiceJoin', { roomId, userId, socketId: socket.id });
+    console.log('\n=== VOICE JOIN HANDLER START ===');
+    console.log('[VOICE DEBUG] handleVoiceJoin called with:', { roomId, clientUserId: userId, socketId: socket.id });
+    console.log('[VOICE DEBUG] Total users in memory:', this.users.size);
+    console.log('[VOICE DEBUG] All users:', Array.from(this.users.entries()).map(([sid, u]) => ({ sid, userId: u.userId, username: u.username, roomId: u.roomId })));
+    
     try {
       const user = this.users.get(socket.id);
-      if (!user || user.roomId !== roomId) {
-        socket.emit('error', { message: 'Must be in room to join voice chat' });
+      console.log('[VOICE DEBUG] Found user for socket:', user ? { username: user.username, userId: user.userId, roomId: user.roomId } : 'NOT FOUND');
+      
+      if (!user) {
+        console.error('[VOICE DEBUG] ERROR: User not found for socket.id:', socket.id);
+        socket.emit('error', { message: 'User not found. Please rejoin the room.' });
         return;
       }
+      
+      if (user.roomId !== roomId) {
+        console.error('[VOICE DEBUG] ERROR: Room mismatch. User room:', user.roomId, 'Request room:', roomId);
+        socket.emit('error', { message: 'Room ID mismatch. Please rejoin the room.' });
+        return;
+      }
+
+      // Use the user's stored userId, not the client-provided one
+      const actualUserId = user.userId;
 
       // Debug logging
       logger.info('Voice join attempt', {
         socketId: socket.id,
         clientUserId: userId,
-        userObjectUserId: user.userId,
+        actualUserId: actualUserId,
         username: user.username,
         roomId
       });
@@ -35,7 +81,9 @@ class VoiceHandlers {
       }
 
       // Initialize voice room if it doesn't exist
+      console.log('[VOICE DEBUG] Voice rooms before init:', this.voiceRooms.size);
       if (!this.voiceRooms.has(roomId)) {
+        console.log('[VOICE DEBUG] Creating new voice room for:', roomId);
         this.voiceRooms.set(roomId, {
           participants: new Map(),
           connections: new Map()
@@ -43,10 +91,24 @@ class VoiceHandlers {
       }
 
       const voiceRoom = this.voiceRooms.get(roomId);
+      console.log('[VOICE DEBUG] Voice room participants before join:', voiceRoom.participants.size);
 
-      // Check if user is already in voice chat
-      if (voiceRoom.participants.has(userId)) {
+      // Check if user is already in voice chat - use actualUserId
+      if (voiceRoom.participants.has(actualUserId)) {
         logger.warn('User already in voice chat', { username: user.username, roomId });
+        // Send current participants list anyway
+        const participantData = Array.from(voiceRoom.participants.values()).map(p => ({
+          id: p.userId,
+          username: p.username,
+          isMuted: p.isMuted,
+          isSpeaking: p.isSpeaking,
+          connectionQuality: p.connectionQuality
+        }));
+        socket.emit('voice_user_joined', {
+          userId: actualUserId,
+          username: user.username,
+          participants: participantData
+        });
         return;
       }
 
@@ -56,9 +118,9 @@ class VoiceHandlers {
       user.lastActivity = new Date();
       this.users.set(socket.id, user);
 
-      // Add to voice room participants - key by userId for consistent lookups
-      voiceRoom.participants.set(userId, {
-        userId: userId, // Use the actual userId passed from client
+      // Add to voice room participants - key by actualUserId for consistent lookups
+      voiceRoom.participants.set(actualUserId, {
+        userId: actualUserId,
         username: user.username,
         socketId: socket.id,
         isMuted: true,
@@ -68,11 +130,10 @@ class VoiceHandlers {
 
       updateRoomActivity(roomId, this.rooms);
 
-
       // Get list of existing voice participants (excluding the new user)
       const existingParticipants = Array.from(voiceRoom.participants.values())
-        .filter(p => p.userId !== userId);
-      console.log('[VOICE DEBUG] Existing participants before join', { roomId, userId, existingParticipants });
+        .filter(p => p.userId !== actualUserId);
+      console.log('[VOICE DEBUG] Existing participants before join', { roomId, actualUserId, existingParticipants });
 
       // Create participant data for client
       const participantData = Array.from(voiceRoom.participants.values()).map(p => ({
@@ -82,23 +143,34 @@ class VoiceHandlers {
         isSpeaking: p.isSpeaking,
         connectionQuality: p.connectionQuality
       }));
-      console.log('[VOICE DEBUG] All participants after join', { roomId, userId, participantData });
+      console.log('[VOICE DEBUG] All participants after join', { roomId, actualUserId, participantData });
 
       // Notify all users in the room about updated participant list
+      console.log('[VOICE DEBUG] Emitting voice_user_joined to room:', roomId);
+      console.log('[VOICE DEBUG] Event data:', { userId: actualUserId, username: user.username, participantsCount: participantData.length });
+      console.log('[VOICE DEBUG] Full participants array:', participantData);
+      
       this.io.to(roomId).emit('voice_user_joined', {
-        userId: userId,
+        userId: actualUserId,
         username: user.username,
         participants: participantData
       });
+      
+      console.log('[VOICE DEBUG] voice_user_joined emitted successfully');
+      console.log('=== VOICE JOIN HANDLER END ===\n');
 
       logger.info('User joined voice chat', { 
         username: user.username, 
-        userId,
+        userId: actualUserId,
         roomId, 
         socketId: socket.id,
         totalVoiceParticipants: voiceRoom.participants.size
       });
     } catch (error) {
+      console.error('\n=== VOICE JOIN ERROR ===');
+      console.error('[VOICE DEBUG] Exception caught:', error);
+      console.error('[VOICE DEBUG] Stack trace:', error.stack);
+      console.error('=== VOICE JOIN ERROR END ===\n');
       logger.error('Error handling voice join', { error: error.message, socketId: socket.id });
       socket.emit('error', { message: 'Failed to join voice chat' });
     }
@@ -106,41 +178,26 @@ class VoiceHandlers {
 
   // Voice offer (WebRTC signaling)
   handleVoiceOffer(socket, { targetUserId, offer }) {
-  const user = this.users.get(socket.id);
-  console.log('[VOICE DEBUG] handleVoiceOffer', { roomId: user?.roomId, fromUserId: user?.userId, targetUserId });
     try {
       const user = this.users.get(socket.id);
       if (!user) return;
 
-      // Find target user by userId in the same room's voice participants
       const voiceRoom = this.voiceRooms.get(user.roomId);
       if (!voiceRoom) return;
 
-      // Debug logging
-      logger.debug('Voice offer attempt', {
-        fromUserId: user.userId,
-        targetUserId,
-        voiceRoomParticipants: Array.from(voiceRoom.participants.values()).map(p => ({
-          userId: p.userId,
-          socketId: p.socketId,
-          username: p.username
-        }))
-      });
-
-      // Find the target participant in voice room by userId key
       const targetParticipant = voiceRoom.participants.get(targetUserId);
       
       if (!targetParticipant) {
-        logger.warn('Target user not found in voice chat', { 
-          targetUserId, 
+        logger.warn('Target user not found for voice offer', { 
+          from: user.username, 
+          to: targetUserId, 
           roomId: user.roomId,
           availableParticipants: Array.from(voiceRoom.participants.values()).map(p => p.userId)
         });
         return;
       }
 
-      // Send offer to target user - use userId consistently
-      socket.to(targetParticipant.socketId).emit('voice_offer', {
+      this.io.to(targetParticipant.socketId).emit('voice_offer', {
         fromUserId: user.userId,
         offer
       });
@@ -158,17 +215,13 @@ class VoiceHandlers {
 
   // Voice answer (WebRTC signaling)
   handleVoiceAnswer(socket, { targetUserId, answer }) {
-  const user = this.users.get(socket.id);
-  console.log('[VOICE DEBUG] handleVoiceAnswer', { roomId: user?.roomId, fromUserId: user?.userId, targetUserId });
     try {
       const user = this.users.get(socket.id);
       if (!user) return;
 
-      // Find target user by userId in the same room's voice participants
       const voiceRoom = this.voiceRooms.get(user.roomId);
       if (!voiceRoom) return;
 
-      // Find the target participant in voice room by userId key
       const targetParticipant = voiceRoom.participants.get(targetUserId);
       
       if (!targetParticipant) {
@@ -181,7 +234,6 @@ class VoiceHandlers {
         return;
       }
 
-      // Forward answer to target user - use userId consistently
       this.io.to(targetParticipant.socketId).emit('voice_answer', {
         fromUserId: user.userId,
         answer

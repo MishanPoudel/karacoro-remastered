@@ -17,6 +17,8 @@
   "license": "MIT",
   "scripts": {
     "dev": "next dev",
+    "dev:server": "cd server && npm start",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "next build",
     "start": "next start",
     "build:server": "cd server && npm install",

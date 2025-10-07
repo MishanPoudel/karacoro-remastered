@@ -1,1034 +1,567 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
-import { Mic, MicOff, Volume2, VolumeX, Users, Wifi, WifiOff, TriangleAlert as AlertTriangle, Settings, Loader as Loader2 } from 'lucide-react';
+import { Mic, MicOff, Volume2, VolumeX, User, X, Wifi, Users, Settings } from 'lucide-react';
 import { toast } from 'sonner';
-import { envLog } from '@/lib/config';
 
-export interface VoiceParticipant {
-  id: string;
-  username?: string;
-  isMuted: boolean;
-  isSpeaking?: boolean;
-  connectionQuality?: 'good' | 'medium' | 'poor';
-  volume?: number;
-  userVolume?: number;
-}
-
-export interface VoiceChatProps {
+interface VoiceChatProps {
   socket: any;
   roomId: string;
   userId: string;
-  onConnectionStatusChange?: (isConnected: boolean) => void;
-  onVoiceParticipantsChange?: (participants: VoiceParticipant[]) => void;
-  onMuteStatusChange?: (isMuted: boolean) => void;
+  username: string;
 }
 
-const ICE_SERVERS = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun.stunprotocol.org:3478' }
-];
+interface VoiceParticipant {
+  id: string;
+  username: string;
+  isMuted: boolean;
+  isSpeaking: boolean;
+  connectionQuality: 'good' | 'medium' | 'poor';
+}
 
-export function VoiceChat({ 
-  socket, 
-  roomId, 
-  userId,
-  onConnectionStatusChange,
-  onVoiceParticipantsChange,
-  onMuteStatusChange
-}: VoiceChatProps) {
+export function VoiceChat({ socket, roomId, userId, username }: VoiceChatProps) {
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
   const [isMuted, setIsMuted] = useState(true);
+  const [isDeafened, setIsDeafened] = useState(false);
   const [participants, setParticipants] = useState<VoiceParticipant[]>([]);
-  const [masterVolume, setMasterVolume] = useState(80);
-  const [showSettings, setShowSettings] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [hasPermission, setHasPermission] = useState(false);
-  const [isDemoMode, setIsDemoMode] = useState(false);
-
+  const [userVolumes, setUserVolumes] = useState<Map<string, number>>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('voiceChat_userVolumes');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          return new Map(Object.entries(parsed));
+        } catch (e) {
+          console.error('Failed to parse saved volumes:', e);
+        }
+      }
+    }
+    return new Map();
+  });
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
+  
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const socketRef = useRef<any>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const voiceActivityTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioElementsRef = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const pendingCandidatesRef = useRef<Map<string, RTCIceCandidate[]>>(new Map());
 
   useEffect(() => {
-    socketRef.current = socket;
-  }, [socket]);
-
-  const getCurrentSocket = useCallback(() => {
-    if (socketRef.current) return socketRef.current;
-    
-    if (typeof window !== 'undefined' && (window as any).__KARAOKE_SOCKET__) {
-      return (window as any).__KARAOKE_SOCKET__;
+    if (typeof window !== 'undefined') {
+      const volumesObj = Object.fromEntries(userVolumes);
+      localStorage.setItem('voiceChat_userVolumes', JSON.stringify(volumesObj));
     }
-    
-    return null;
-  }, []);
+  }, [userVolumes]);
 
-  useEffect(() => {
-    const checkDemoMode = () => {
-      if (typeof window !== 'undefined') {
-        const globalSocket = (window as any).__KARAOKE_SOCKET__;
-        if (globalSocket && 'id' in globalSocket && globalSocket.id.includes('mock')) {
-          setIsDemoMode(true);
-        }
+  const ICE_SERVERS = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+    ],
+    iceCandidatePoolSize: 10,
+  };
+
+  const createPeerConnection = useCallback((targetUserId: string) => {
+    const pc = new RTCPeerConnection(ICE_SERVERS);
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        socket.emit('voice_ice_candidate', {
+          roomId,
+          targetUserId,
+          candidate: event.candidate,
+        });
       }
     };
-    
-    checkDemoMode();
-  }, []);
 
-  // Socket event listeners
-  useEffect(() => {
-    const currentSocket = getCurrentSocket();
-    if (!currentSocket || isDemoMode) return;
-
-    // Local helper functions
-    const updateConnectionQuality = (peerId: string, pc: RTCPeerConnection) => {
-      let quality: 'good' | 'medium' | 'poor' = 'good';
-      
-      switch (pc.connectionState) {
-        case 'connected':
-          quality = 'good';
-          break;
-        case 'connecting':
-          quality = 'medium';
-          break;
-        case 'disconnected':
-        case 'failed':
-          quality = 'poor';
-          break;
-      }
-
-      setParticipants(prev => prev.map(p => 
-        p.id === peerId 
-          ? { ...p, connectionQuality: quality }
-          : p
-      ));
-    };
-
-    const handleRemoteStream = (peerId: string, stream: MediaStream) => {
-      let audioElement = document.querySelector(`audio[data-participant="${peerId}"]`) as HTMLAudioElement;
+    pc.ontrack = (event) => {
+      const [remoteStream] = event.streams;
+      let audioElement = audioElementsRef.current.get(targetUserId);
       
       if (!audioElement) {
-        audioElement = document.createElement('audio');
-        audioElement.setAttribute('data-participant', peerId);
+        audioElement = new Audio();
         audioElement.autoplay = true;
-        audioElement.style.display = 'none';
-        
-        const participant = participants.find(p => p.id === peerId);
-        const volume = participant?.userVolume ?? masterVolume;
-        audioElement.volume = volume / 100;
-        
-        document.body.appendChild(audioElement);
+        const savedVolume = userVolumes.get(targetUserId) ?? 100;
+        audioElement.volume = isDeafened ? 0 : savedVolume / 100;
+        audioElementsRef.current.set(targetUserId, audioElement);
       }
-
-      audioElement.srcObject = stream;
-      envLog.info(`Remote stream connected for ${peerId}`);
+      
+      audioElement.srcObject = remoteStream;
     };
 
-    // Local peer connection creation function
-    const createLocalPeerConnection = async (peerId: string, isInitiator: boolean): Promise<RTCPeerConnection | null> => {
-      if (isDemoMode) {
-        return null;
+    pc.oniceconnectionstatechange = () => {
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+        handlePeerDisconnect(targetUserId);
       }
+    };
 
-      const pc = new RTCPeerConnection({
-        iceServers: ICE_SERVERS,
-        iceCandidatePoolSize: 10
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach((track) => {
+        pc.addTrack(track, localStreamRef.current!);
       });
+    }
 
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => {
-          if (localStreamRef.current) {
-            pc.addTrack(track, localStreamRef.current);
-          }
-        });
-      }
+    peerConnectionsRef.current.set(targetUserId, pc);
+    return pc;
+  }, [socket, roomId, isDeafened]);
 
-      pc.ontrack = (event) => {
-        const [remoteStream] = event.streams;
-        handleRemoteStream(peerId, remoteStream);
-      };
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          currentSocket.emit('voice_ice_candidate', {
-            targetUserId: peerId,
-            candidate: event.candidate.toJSON()
-          });
-        }
-      };
-
-      pc.onconnectionstatechange = () => {
-        envLog.debug(`Connection state with ${peerId}:`, pc.connectionState);
-        updateConnectionQuality(peerId, pc);
-      };
-
-      peerConnectionsRef.current.set(peerId, pc);
-
-      if (isInitiator) {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        
-        currentSocket.emit('voice_offer', {
-          targetUserId: peerId,
-          offer: offer
-        });
-      }
-
-      envLog.info(`Peer connection created with ${peerId}`);
-      return pc;
-    };
-
-    const handleVoiceJoin = async (data: { userId: string; participants: VoiceParticipant[] }) => {
-      envLog.info('User joined voice chat:', {
-        joinedUserId: data.userId,
-        currentUserId: userId,
-        isCurrentUser: data.userId === userId,
-        participants: data.participants?.map(p => ({ id: p.id, isMuted: p.isMuted })),
-        participantCount: data.participants?.length || 0,
-        isConnected
-      });
-
-      if (data.participants) {
-        setParticipants(data.participants);
-
-        if (data.userId === userId && isConnected) {
-          const otherUsers = data.participants.filter(p => p.id !== userId);
-          envLog.info('Current user confirmed in voice - connecting to others:', otherUsers.map(u => u.id));
-
-          for (const participant of otherUsers) {
-            try {
-              await createLocalPeerConnection(participant.id, true);
-            } catch (error) {
-              envLog.error(`Failed to create peer connection with ${participant.id}:`, error);
-            }
-          }
-        } else if (data.userId !== userId && isConnected) {
-          envLog.info('New user joined - initiating peer connection:', data.userId);
-          try {
-            await createLocalPeerConnection(data.userId, true);
-          } catch (error) {
-            envLog.error('Failed to create peer connection with new user:', error);
-          }
-        }
-      }
-    };
-
-    const handleVoiceLeave = (data: { userId: string; participants: VoiceParticipant[] }) => {
-      envLog.info('User left voice chat:', data.userId);
-      
-      // Clean up peer connection for the user who left
-      const pc = peerConnectionsRef.current.get(data.userId);
-      if (pc) {
-        pc.close();
-        peerConnectionsRef.current.delete(data.userId);
-      }
-      
-      // Remove audio element for the user who left
-      const audioElement = document.querySelector(`audio[data-participant="${data.userId}"]`);
-      if (audioElement) {
-        audioElement.remove();
-      }
-      
-      if (data.participants) {
-        setParticipants(data.participants);
-      }
-    };
-
-    const handleVoiceOffer = async (data: { fromUserId: string; offer: RTCSessionDescriptionInit }) => {
-      try {
-        envLog.info('Received voice offer from:', data.fromUserId);
-        
-        const pc = await createLocalPeerConnection(data.fromUserId, false);
-        if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          
-          currentSocket.emit('voice_answer', {
-            targetUserId: data.fromUserId,
-            answer: answer
-          });
-        }
-      } catch (error) {
-        envLog.error('Error handling voice offer:', error);
-      }
-    };
-
-    const handleVoiceAnswer = async (data: { fromUserId: string; answer: RTCSessionDescriptionInit }) => {
-      try {
-        envLog.info('Received voice answer from:', data.fromUserId);
-        
-        const pc = peerConnectionsRef.current.get(data.fromUserId);
-        if (pc) {
-          await pc.setRemoteDescription(new RTCSessionDescription(data.answer));
-        }
-      } catch (error) {
-        envLog.error('Error handling voice answer:', error);
-      }
-    };
-
-    const handleVoiceIceCandidate = async (data: { fromUserId: string; candidate: RTCIceCandidateInit }) => {
-      try {
-        envLog.debug('Received ICE candidate from:', data.fromUserId);
-        
-        const pc = peerConnectionsRef.current.get(data.fromUserId);
-        if (pc) {
-          await pc.addIceCandidate(new RTCIceCandidate(data.candidate));
-        }
-      } catch (error) {
-        envLog.error('Error handling ICE candidate:', error);
-      }
-    };
-
-    const handleVoiceActivity = (data: { userId: string; isSpeaking: boolean; volume: number }) => {
-      setParticipants(prev => prev.map(p => 
-        p.id === data.userId 
-          ? { ...p, isSpeaking: data.isSpeaking, volume: data.volume }
-          : p
-      ));
-    };
-
-    const handleVoiceMuteStatus = (data: { userId: string; isMuted: boolean }) => {
-      setParticipants(prev => prev.map(p => 
-        p.id === data.userId 
-          ? { ...p, isMuted: data.isMuted, isSpeaking: false }
-          : p
-      ));
-    };
-
-    // Register event listeners
-    currentSocket.on('voice_user_joined', handleVoiceJoin);
-    currentSocket.on('voice_user_left', handleVoiceLeave);
-    currentSocket.on('voice_offer', handleVoiceOffer);
-    currentSocket.on('voice_answer', handleVoiceAnswer);
-    currentSocket.on('voice_ice_candidate', handleVoiceIceCandidate);
-    currentSocket.on('voice_activity', handleVoiceActivity);
-    currentSocket.on('voice_mute_status', handleVoiceMuteStatus);
-
-    // Cleanup
-    return () => {
-      currentSocket.off('voice_user_joined', handleVoiceJoin);
-      currentSocket.off('voice_user_left', handleVoiceLeave);
-      currentSocket.off('voice_offer', handleVoiceOffer);
-      currentSocket.off('voice_answer', handleVoiceAnswer);
-      currentSocket.off('voice_ice_candidate', handleVoiceIceCandidate);
-      currentSocket.off('voice_activity', handleVoiceActivity);
-      currentSocket.off('voice_mute_status', handleVoiceMuteStatus);
-    };
-  }, [getCurrentSocket, isDemoMode, userId, isConnected]);
-
-  const checkMicrophonePermission = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
-      setHasPermission(true);
-    } catch {
-      setHasPermission(false);
+  const handlePeerDisconnect = (targetUserId: string) => {
+    const pc = peerConnectionsRef.current.get(targetUserId);
+    if (pc) {
+      pc.close();
+      peerConnectionsRef.current.delete(targetUserId);
+    }
+    
+    const audioElement = audioElementsRef.current.get(targetUserId);
+    if (audioElement) {
+      audioElement.srcObject = null;
+      audioElementsRef.current.delete(targetUserId);
     }
   };
 
-  const requestMicrophoneAccess = async (): Promise<MediaStream> => {
-    if (isDemoMode) {
-      const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-      const oscillator = audioContext.createOscillator();
-      const destination = audioContext.createMediaStreamDestination();
-      oscillator.connect(destination);
-      oscillator.start();
-      
-      envLog.info('Demo microphone access granted');
-      return destination.stream;
-    }
-
+  const connectToVoice = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      console.log('[VOICE CLIENT] Starting connection process...');
+      console.log('[VOICE CLIENT] Current socket:', socket ? 'Connected' : 'Not connected');
+      console.log('[VOICE CLIENT] Parameters:', { userId, roomId, username });
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 44100
-        },
-        video: false
+        } 
       });
-
-      const audioTrack = stream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = false;
-      }
-
-      envLog.info('Microphone access granted');
-      return stream;
-    } catch (error) {
-      envLog.error('Failed to access microphone:', error);
-      throw new Error('Microphone access denied. Please allow microphone access to use voice chat.');
-    }
-  };
-
-  const setupAudioAnalysis = (stream: MediaStream) => {
-    if (isDemoMode) {
-      startDemoVoiceActivity();
-      return;
-    }
-
-    try {
-      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
-      const source = audioContextRef.current.createMediaStreamSource(stream);
-      analyserRef.current = audioContextRef.current.createAnalyser();
       
-      analyserRef.current.fftSize = 256;
-      analyserRef.current.smoothingTimeConstant = 0.8;
+      console.log('[VOICE CLIENT] Got audio stream');
       
-      source.connect(analyserRef.current);
-      startVoiceActivityDetection();
-    } catch (error) {
-      envLog.error('Failed to setup audio analysis:', error);
-    }
-  };
-
-  const startDemoVoiceActivity = () => {
-    voiceActivityTimerRef.current = setInterval(() => {
-      if (isMuted) return;
-
-      const isSpeaking = Math.random() > 0.8;
-      const volume = isSpeaking ? Math.random() * 50 + 20 : 0;
-
-      const currentSocket = getCurrentSocket();
-      if (currentSocket) {
-        currentSocket.emit('voice_activity', {
-          roomId,
-          userId,
-          isSpeaking,
-          volume
-        });
-      }
-
-      setParticipants(prev => prev.map(p => 
-        p.id === userId 
-          ? { ...p, isSpeaking, volume }
-          : p
-      ));
-    }, 500);
-  };
-
-  const startVoiceActivityDetection = () => {
-    if (!analyserRef.current) return;
-
-    const bufferLength = analyserRef.current.frequencyBinCount;
-    const dataArray = new Uint8Array(bufferLength);
-    const voiceActivityThreshold = 30;
-
-    const detectVoiceActivity = () => {
-      if (!analyserRef.current || isMuted) return;
-
-      analyserRef.current.getByteFrequencyData(dataArray);
-      
-      const average = dataArray.reduce((sum, value) => sum + value, 0) / bufferLength;
-      const isSpeaking = average > voiceActivityThreshold;
-
-      const currentSocket = getCurrentSocket();
-      if (currentSocket) {
-        currentSocket.emit('voice_activity', {
-          roomId,
-          userId,
-          isSpeaking,
-          volume: average
-        });
-      }
-
-      setParticipants(prev => prev.map(p => 
-        p.id === userId 
-          ? { ...p, isSpeaking, volume: average }
-          : p
-      ));
-    };
-
-    voiceActivityTimerRef.current = setInterval(detectVoiceActivity, 100);
-  };
-
-  const createPeerConnection = async (peerId: string, isInitiator: boolean): Promise<RTCPeerConnection | null> => {
-    if (isDemoMode) {
-      return null;
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: ICE_SERVERS,
-      iceCandidatePoolSize: 10
-    });
-
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => {
-        if (localStreamRef.current) {
-          pc.addTrack(track, localStreamRef.current);
-        }
-      });
-    }
-
-    pc.ontrack = (event) => {
-      const [remoteStream] = event.streams;
-      handleRemoteStream(peerId, remoteStream);
-    };
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        const currentSocket = getCurrentSocket();
-        if (currentSocket) {
-          currentSocket.emit('voice_ice_candidate', {
-            targetUserId: peerId,
-            candidate: event.candidate.toJSON()
-          });
-        }
-      }
-    };
-
-    pc.onconnectionstatechange = () => {
-      envLog.debug(`Connection state with ${peerId}:`, pc.connectionState);
-      updateConnectionQuality(peerId, pc);
-    };
-
-    peerConnectionsRef.current.set(peerId, pc);
-
-    if (isInitiator) {
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      
-      const currentSocket = getCurrentSocket();
-      if (currentSocket) {
-        currentSocket.emit('voice_offer', {
-          targetUserId: peerId,
-          offer: offer
-        });
-      }
-    }
-
-    envLog.info(`Peer connection created with ${peerId}`);
-    return pc;
-  };
-
-  const handleRemoteStream = (peerId: string, stream: MediaStream) => {
-    let audioElement = document.querySelector(`audio[data-participant="${peerId}"]`) as HTMLAudioElement;
-    
-    if (!audioElement) {
-      audioElement = document.createElement('audio');
-      audioElement.setAttribute('data-participant', peerId);
-      audioElement.autoplay = true;
-      audioElement.style.display = 'none';
-      
-      const participant = participants.find(p => p.id === peerId);
-      const volume = participant?.userVolume ?? masterVolume;
-      audioElement.volume = volume / 100;
-      
-      document.body.appendChild(audioElement);
-    }
-
-    audioElement.srcObject = stream;
-    envLog.info(`Remote stream connected for ${peerId}`);
-  };
-
-  const updateConnectionQuality = (peerId: string, pc: RTCPeerConnection) => {
-    let quality: 'good' | 'medium' | 'poor' = 'good';
-    
-    switch (pc.connectionState) {
-      case 'connected':
-        quality = 'good';
-        break;
-      case 'connecting':
-        quality = 'medium';
-        break;
-      case 'disconnected':
-      case 'failed':
-        quality = 'poor';
-        break;
-    }
-
-    setParticipants(prev => prev.map(p => 
-      p.id === peerId 
-        ? { ...p, connectionQuality: quality }
-        : p
-    ));
-  };
-
-  const connectToVoiceChat = async () => {
-    if (isConnected || isConnecting) return;
-
-    setIsConnecting(true);
-    setError(null);
-
-    try {
-      envLog.info('Connecting to voice chat...');
-      
-      if (isDemoMode) {
-        toast.info('🎭 Demo Voice Chat', {
-          description: 'Voice chat is simulated in demo mode',
-          duration: 3000,
-        });
-      }
-      
-      const stream = await requestMicrophoneAccess();
       localStreamRef.current = stream;
-      
-      setupAudioAnalysis(stream);
-      
-      setParticipants(prev => {
-        if (prev.find(p => p.id === userId)) return prev;
-        return [...prev, {
-          id: userId,
-          isMuted: true,
-          isSpeaking: false,
-          connectionQuality: 'good',
-          volume: 0,
-          userVolume: masterVolume
-        }];
+      stream.getAudioTracks().forEach(track => {
+        track.enabled = false;
       });
-
-      if (isDemoMode) {
-        setTimeout(() => {
-          setParticipants(prev => [
-            ...prev,
-            {
-              id: 'DemoUser1',
-              isMuted: false,
-              isSpeaking: false,
-              connectionQuality: 'good',
-              volume: 0,
-              userVolume: masterVolume
-            },
-            {
-              id: 'DemoUser2',
-              isMuted: true,
-              isSpeaking: false,
-              connectionQuality: 'medium',
-              volume: 0,
-              userVolume: masterVolume
-            }
-          ]);
-        }, 1000);
+      
+      console.log('\\n🎤 [VOICE CLIENT] ========================================');
+      console.log('🎤 [VOICE CLIENT] Attempting to join voice chat');
+      console.log('🎤 [VOICE CLIENT] Socket object exists?:', !!socket);
+      console.log('🎤 [VOICE CLIENT] Socket connected?:', socket?.connected);
+      console.log('🎤 [VOICE CLIENT] Socket ID:', socket?.id);
+      console.log('🎤 [VOICE CLIENT] Room ID:', roomId);
+      console.log('🎤 [VOICE CLIENT] User ID:', userId);
+      console.log('🎤 [VOICE CLIENT] Username:', username);
+      console.log('🎤 [VOICE CLIENT] ========================================\\n');
+      
+      if (!socket) {
+        console.error('❌ [VOICE CLIENT] ERROR: Socket object is null/undefined!');
+        toast.error('Connection error: Socket not initialized');
+        return;
       }
       
-      const currentSocket = getCurrentSocket();
-      if (currentSocket) {
-        currentSocket.emit('voice_join', {
-          roomId,
-          userId
-        });
+      if (!socket.connected) {
+        console.error('❌ [VOICE CLIENT] ERROR: Socket not connected to server!');
+        toast.error('Not connected to server. Please refresh the page.');
+        return;
       }
-
+      
+      console.log('✅ [VOICE CLIENT] Socket is valid and connected, emitting voice_join...');
+      socket.emit('voice_join', { roomId, userId });
+      
+      console.log('✅ [VOICE CLIENT] voice_join event emitted successfully');
+      console.log('⏳ [VOICE CLIENT] Waiting for voice_user_joined response from server...');
+      
       setIsConnected(true);
-      setIsConnecting(false);
-      onConnectionStatusChange?.(true);
-      
-      const message = isDemoMode 
-        ? 'Connected to demo voice chat!' 
-        : 'Connected to voice chat!';
-      toast.success(message);
-      envLog.info('Voice chat connected successfully');
+      setIsMuted(true);
+      toast.success('Connected to voice chat');
     } catch (error) {
-      envLog.error('Failed to connect to voice chat:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to connect to voice chat';
-      setError(errorMessage);
-      setIsConnecting(false);
-      toast.error(errorMessage);
+      console.error('[VOICE CLIENT] Failed to get audio stream:', error);
+      toast.error('Failed to access microphone');
     }
   };
 
-  // Memoize disconnectFromVoiceChat to avoid useEffect dependency warning
-  const disconnectFromVoiceChat = useCallback(async () => {
-    if (!isConnected) return;
-
-    try {
-      envLog.info('Disconnecting from voice chat...');
-      if (voiceActivityTimerRef.current) {
-        clearInterval(voiceActivityTimerRef.current);
-        voiceActivityTimerRef.current = null;
-      }
-      const peerConnections = Array.from(peerConnectionsRef.current.entries());
-      for (const [peerId, pc] of peerConnections) {
-        try {
-          pc.close();
-        } catch (error) {
-          envLog.warn(`Error closing peer connection for ${peerId}:`, error);
-        }
-      }
-      peerConnectionsRef.current.clear();
-      if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach(track => {
-          try {
-            track.stop();
-          } catch (error) {
-            envLog.warn('Error stopping track:', error);
-          }
-        });
-        localStreamRef.current = null;
-      }
-      if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
-        try {
-          await audioContextRef.current.close();
-        } catch (error) {
-          envLog.warn('Error closing audio context:', error);
-        }
-        audioContextRef.current = null;
-        analyserRef.current = null;
-      }
-      const audioElements = document.querySelectorAll('audio[data-participant]');
-      audioElements.forEach(element => element.remove());
-      const currentSocket = getCurrentSocket();
-      if (currentSocket) {
-        currentSocket.emit('voice_leave', {
-          roomId,
-          userId
-        });
-      }
-      setIsConnected(false);
-      setParticipants([]);
-      onConnectionStatusChange?.(false);
-      onVoiceParticipantsChange?.([]);
-      const message = isDemoMode 
-        ? 'Disconnected from demo voice chat' 
-        : 'Disconnected from voice chat';
-      toast.info(message);
-      envLog.info('Voice chat disconnected');
-    } catch (error) {
-      envLog.error('Error disconnecting from voice chat:', error);
+  const disconnectFromVoice = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
     }
-  }, [isConnected, voiceActivityTimerRef, peerConnectionsRef, localStreamRef, audioContextRef, analyserRef, getCurrentSocket, roomId, userId, onConnectionStatusChange, onVoiceParticipantsChange, isDemoMode]);
+
+    peerConnectionsRef.current.forEach((pc) => pc.close());
+    peerConnectionsRef.current.clear();
+
+    audioElementsRef.current.forEach((audio) => {
+      audio.srcObject = null;
+    });
+    audioElementsRef.current.clear();
+
+    socket.emit('voice_leave', { roomId, userId });
+    setIsConnected(false);
+    setParticipants([]);
+    toast.info('Disconnected from voice chat');
+  };
 
   const toggleMute = () => {
-    if (!localStreamRef.current || !isConnected) {
-      toast.warning('Not connected to voice chat');
-      return;
-    }
-
-    const newMutedState = !isMuted;
-    setIsMuted(newMutedState);
+    if (!localStreamRef.current) return;
     
-    if (!isDemoMode) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !newMutedState;
-      }
+    const audioTrack = localStreamRef.current.getAudioTracks()[0];
+    if (audioTrack) {
+      const newMutedState = !isMuted;
+      audioTrack.enabled = !newMutedState;
+      setIsMuted(newMutedState);
+      
+      // Update local participants state immediately for instant UI feedback
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === userId ? { ...p, isMuted: newMutedState } : p))
+      );
+      
+      socket.emit('voice_toggle_mute', { roomId, userId, isMuted: newMutedState });
+      toast.info(newMutedState ? 'Microphone muted' : 'Microphone unmuted');
     }
-
-    setParticipants(prev => prev.map(p => 
-      p.id === userId 
-        ? { ...p, isMuted: newMutedState, isSpeaking: false }
-        : p
-    ));
-
-    const currentSocket = getCurrentSocket();
-    if (currentSocket) {
-      currentSocket.emit('voice_mute_status', {
-        roomId,
-        userId,
-        isMuted: newMutedState
-      });
-    }
-
-    // onMuteStatusChange?.(newMutedState);
-    
-    envLog.info(`Microphone ${newMutedState ? 'muted' : 'unmuted'}`);
   };
 
-  const setParticipantVolume = (participantId: string, volume: number) => {
-    if (isDemoMode) {
-      setParticipants(prev => prev.map(p => 
-        p.id === participantId 
-          ? { ...p, userVolume: volume }
-          : p
-      ));
-      return;
+  const handleVolumeChange = (targetUserId: string, volume: number) => {
+    setUserVolumes(prev => new Map(prev.set(targetUserId, volume)));
+    
+    const audioElement = audioElementsRef.current.get(targetUserId);
+    if (audioElement && !isDeafened) {
+      audioElement.volume = volume / 100;
     }
-
-    const audioElements = document.querySelectorAll(`audio[data-participant="${participantId}"]`);
-    audioElements.forEach((audio) => {
-      (audio as HTMLAudioElement).volume = Math.max(0, Math.min(1, volume / 100));
-    });
-
-    setParticipants(prev => prev.map(p => 
-      p.id === participantId 
-        ? { ...p, userVolume: volume }
-        : p
-    ));
   };
 
-  const handleMasterVolumeChange = (newVolume: number[]) => {
-    const volume = newVolume[0];
-    setMasterVolume(volume);
+  const toggleDeafen = () => {
+    const newDeafenState = !isDeafened;
+    setIsDeafened(newDeafenState);
     
-    participants.forEach(participant => {
-      if (participant.id !== userId && participant.userVolume === undefined) {
-        setParticipantVolume(participant.id, volume);
+    audioElementsRef.current.forEach((audio, targetUserId) => {
+      if (newDeafenState) {
+        audio.volume = 0;
+      } else {
+        const savedVolume = userVolumes.get(targetUserId) ?? 100;
+        audio.volume = savedVolume / 100;
       }
     });
+
+    if (newDeafenState && !isMuted) {
+      toggleMute();
+    }
+    
+    toast.info(newDeafenState ? 'Audio output disabled' : 'Audio output enabled');
   };
 
   useEffect(() => {
-    if (roomId && userId) {
-      checkMicrophonePermission();
-    }
+    if (!socket) return;
+
+    socket.on('voice_user_joined', ({ userId: joinedUserId, username: joinedUsername, participants: updatedParticipants }) => {
+      console.log('\\n✅ [VOICE CLIENT] ========================================');
+      console.log('✅ [VOICE CLIENT] Received voice_user_joined event!');
+      console.log('✅ [VOICE CLIENT] Joined user ID:', joinedUserId);
+      console.log('✅ [VOICE CLIENT] Joined username:', joinedUsername);
+      console.log('✅ [VOICE CLIENT] My user ID:', userId);
+      console.log('✅ [VOICE CLIENT] Participants count:', updatedParticipants?.length);
+      console.log('✅ [VOICE CLIENT] Full participants:', JSON.stringify(updatedParticipants, null, 2));
+      console.log('✅ [VOICE CLIENT] Am I connected?:', isConnected);
+      console.log('✅ [VOICE CLIENT] ========================================\\n');
+      setParticipants(updatedParticipants);
+      
+      if (isConnected && joinedUserId !== userId) {
+        const pc = createPeerConnection(joinedUserId);
+        pc.createOffer()
+          .then((offer) => pc.setLocalDescription(offer))
+          .then(() => {
+            socket.emit('voice_offer', {
+              roomId,
+              targetUserId: joinedUserId,
+              offer: pc.localDescription,
+            });
+          });
+      }
+    });
+
+    socket.on('voice_user_left', ({ userId: leftUserId, participants: updatedParticipants }) => {
+      handlePeerDisconnect(leftUserId);
+      setParticipants(updatedParticipants);
+    });
+
+    socket.on('voice_offer', async ({ fromUserId, offer }) => {
+      const pc = createPeerConnection(fromUserId);
+      
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      
+      socket.emit('voice_answer', {
+        roomId,
+        targetUserId: fromUserId,
+        answer: pc.localDescription,
+      });
+
+      const pendingCandidates = pendingCandidatesRef.current.get(fromUserId) || [];
+      for (const candidate of pendingCandidates) {
+        await pc.addIceCandidate(candidate);
+      }
+      pendingCandidatesRef.current.delete(fromUserId);
+    });
+
+    socket.on('voice_answer', async ({ fromUserId, answer }) => {
+      const pc = peerConnectionsRef.current.get(fromUserId);
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(answer));
+        
+        const pendingCandidates = pendingCandidatesRef.current.get(fromUserId) || [];
+        for (const candidate of pendingCandidates) {
+          await pc.addIceCandidate(candidate);
+        }
+        pendingCandidatesRef.current.delete(fromUserId);
+      }
+    });
+
+    socket.on('voice_ice_candidate', async ({ fromUserId, candidate }) => {
+      const pc = peerConnectionsRef.current.get(fromUserId);
+      if (pc && pc.remoteDescription) {
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      } else {
+        const pending = pendingCandidatesRef.current.get(fromUserId) || [];
+        pending.push(new RTCIceCandidate(candidate));
+        pendingCandidatesRef.current.set(fromUserId, pending);
+      }
+    });
+
+    socket.on('voice_mute_status', ({ userId: mutedUserId, isMuted: muted }) => {
+      setParticipants((prev) =>
+        prev.map((p) => (p.id === mutedUserId ? { ...p, isMuted: muted } : p))
+      );
+    });
+
+    socket.on('error', (error) => {
+      console.error('\\n❌ [VOICE CLIENT] ========================================');
+      console.error('❌ [VOICE CLIENT] Received error from server!');
+      console.error('❌ [VOICE CLIENT] Error:', error);
+      console.error('❌ [VOICE CLIENT] ========================================\\n');
+      toast.error(error.message || 'Voice chat error');
+    });
 
     return () => {
-      disconnectFromVoiceChat();
+      socket.off('voice_user_joined');
+      socket.off('voice_user_left');
+      socket.off('voice_offer');
+      socket.off('voice_answer');
+      socket.off('voice_ice_candidate');
+      socket.off('voice_mute_status');
+      socket.off('error');
     };
-// eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, userId, disconnectFromVoiceChat]);
+  }, [socket, roomId, userId, isConnected, createPeerConnection]);
 
   useEffect(() => {
-    onVoiceParticipantsChange?.(participants);
-  }, [participants, onVoiceParticipantsChange]);
-
-  const getConnectionQualityColor = (quality?: 'good' | 'medium' | 'poor') => {
-    switch (quality) {
-      case 'good': return 'text-green-400';
-      case 'medium': return 'text-yellow-400';
-      case 'poor': return 'text-red-400';
-      default: return 'text-gray-400';
-    }
-  };
-
-  const getSpeakingIndicator = (participant: VoiceParticipant) => {
-    if (participant.isSpeaking && !participant.isMuted) {
-      return (
-        <div className="flex items-center gap-1">
-          <div className="w-1 h-3 bg-green-400 rounded animate-pulse" />
-          <div className="w-1 h-4 bg-green-400 rounded animate-pulse" style={{ animationDelay: '0.1s' }} />
-          <div className="w-1 h-2 bg-green-400 rounded animate-pulse" style={{ animationDelay: '0.2s' }} />
-        </div>
-      );
-    }
-    return null;
-  };
+    return () => {
+      if (isConnected) {
+        disconnectFromVoice();
+      }
+    };
+  }, []);
 
   return (
-    <Card className="p-4 bg-gray-800/50 border-blue-500/30">
-      <div className="space-y-4">
+    <Card className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 border-red-500/30 shadow-xl">
+      <div className="p-4 border-b border-red-500/20 bg-gradient-to-r from-red-500/10 to-transparent">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Volume2 className="w-5 h-5 text-blue-400" />
-            <h3 className="text-lg font-semibold text-white">Voice Chat</h3>
-            {isDemoMode && (
-              <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 text-xs">
-                Demo
-              </Badge>
-            )}
-            {isConnected && (
-              <Badge variant="secondary" className="bg-green-500/20 text-green-400">
-                <Wifi className="w-3 h-3 mr-1" />
-                Connected
-              </Badge>
-            )}
-            {isConnecting && (
-              <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400">
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                Connecting
-              </Badge>
-            )}
-            {error && (
-              <Badge variant="secondary" className="bg-red-500/20 text-red-400">
-                <AlertTriangle className="w-3 h-3 mr-1" />
-                Error
-              </Badge>
-            )}
-          </div>
-          
-          <div className="flex items-center gap-2">
-            <Button
-              onClick={() => setShowSettings(!showSettings)}
-              variant="ghost"
-              size="sm"
-              className="text-gray-400 hover:text-white"
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        {!hasPermission && !isDemoMode && (
-          <div className="bg-yellow-900/30 border border-yellow-500/30 rounded-lg p-3">
-            <p className="text-yellow-300 text-sm">
-              Microphone permission is required for voice chat. Please allow microphone access when prompted.
-            </p>
-          </div>
-        )}
-
-        {error && (
-          <div className="bg-red-900/30 border border-red-500/30 rounded-lg p-3">
-            <p className="text-red-300 text-sm">{error}</p>
-            <Button
-              onClick={() => {
-                setError(null);
-                connectToVoiceChat();
-              }}
-              size="sm"
-              className="mt-2 bg-red-600 hover:bg-red-700"
-            >
-              Retry
-            </Button>
-          </div>
-        )}
-
-        {!isConnected ? (
-          <div className="text-center py-4">
-            <p className="text-gray-400 mb-4">
-              {isConnecting ? 'Connecting to voice chat...' : 
-               isDemoMode ? 'Join demo voice chat to simulate talking with other participants' :
-               'Join voice chat to talk with other participants'}
-            </p>
-            <Button
-              onClick={connectToVoiceChat}
-              disabled={isConnecting || (!getCurrentSocket() && !isDemoMode) || (!hasPermission && !isDemoMode)}
-              className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-            >
-              {isConnecting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Connecting...
-                </>
-              ) : (
-                <>
-                  <Mic className="w-4 h-4 mr-2" />
-                  Join Voice Chat {isDemoMode && '(Demo)'}
-                </>
-              )}
-            </Button>
-            {!hasPermission && !isDemoMode && (
-              <p className="text-xs text-gray-500 mt-2">
-                Microphone permission required
-              </p>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={toggleMute}
-                  variant={isMuted ? "outline" : "default"}
-                  size="sm"
-                  className={`${
-                    isMuted 
-                      ? 'border-red-500 text-red-400 hover:bg-red-500 hover:text-white' 
-                      : 'bg-green-600 hover:bg-green-700'
-                  } transition-all duration-200`}
-                >
-                  {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </Button>
-                
-                <span className="text-sm text-gray-400">
-                  {isMuted ? 'Muted' : 'Unmuted'} {isDemoMode && '(Demo)'}
-                </span>
-              </div>
-
-              <Button
-                onClick={disconnectFromVoiceChat}
-                variant="outline"
-                size="sm"
-                className="border-red-500 text-red-400 hover:bg-red-500 hover:text-white"
-              >
-                Leave Voice
-              </Button>
+            <div className="p-2 rounded-lg bg-red-500/20">
+              <Users className="w-5 h-5 text-red-500" />
             </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Voice Chat</h3>
+              <p className="text-xs text-gray-400">
+                {isConnected ? 'Connected' : 'Disconnected'}
+              </p>
+            </div>
+          </div>
+          <Badge variant="secondary" className="bg-red-500/20 text-red-400 border-red-500/30">
+            {participants.length} {participants.length === 1 ? 'person' : 'people'}
+          </Badge>
+        </div>
+      </div>
 
-            {showSettings && (
-              <div className="bg-gray-700/50 rounded-lg p-4 space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Master Volume
-                  </label>
-                  <div className="flex items-center gap-3">
-                    <VolumeX className="w-4 h-4 text-gray-400" />
-                    <Slider
-                      value={[masterVolume]}
-                      onValueChange={handleMasterVolumeChange}
-                      max={100}
-                      step={1}
-                      className="flex-1"
-                    />
-                    <Volume2 className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-400 w-8">{masterVolume}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {participants.length > 0 && (
-              <div className="space-y-2">
-                <h4 className="text-sm font-medium text-gray-300">
-                  Participants ({participants.length}) {isDemoMode && '(Demo)'}
-                </h4>
-                <div className="space-y-2 max-h-32 overflow-y-auto">
-                  {participants.map((participant) => (
-                    <div
-                      key={participant.id}
-                      className={`flex items-center justify-between p-2 rounded-lg transition-all duration-200 ${
-                        participant.isSpeaking && !participant.isMuted
-                          ? 'bg-green-500/20 border border-green-500/50'
-                          : 'bg-gray-700/30'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <div className={`w-2 h-2 rounded-full ${
-                          participant.connectionQuality === 'good' ? 'bg-green-400' :
-                          participant.connectionQuality === 'medium' ? 'bg-yellow-400' :
-                          'bg-red-400'
-                        }`} />
-                        
-                        <span className="text-sm text-white truncate">
-                          {participant.username || participant.id}
-                          {participant.id === userId && ' (You)'}
+      <div className="p-4 space-y-4">
+        {isConnected && participants.length > 0 && (
+          <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar">
+            {participants.map((participant) => {
+              const isMe = participant.id === userId;
+              const isExpanded = expandedUserId === participant.id;
+              return (
+                <div
+                  key={participant.id}
+                  className={`rounded-lg transition-all duration-200 ${
+                    isMe 
+                      ? 'bg-red-500/20 border border-red-500/40 shadow-sm' 
+                      : 'bg-gray-800/50 hover:bg-gray-800/70 border border-gray-700/50'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 p-3">
+                    <div className="relative">
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white text-sm ${
+                        isMe ? 'bg-red-500' : 'bg-gradient-to-br from-gray-600 to-gray-700'
+                      }`}>
+                        {participant.username.charAt(0).toUpperCase()}
+                      </div>
+                      {participant.isSpeaking && (
+                        <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-green-500 rounded-full border-2 border-gray-900 animate-pulse" />
+                      )}
+                    </div>
+                    
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-white truncate">
+                          {participant.username}
                         </span>
-                        
-                        {participant.isMuted ? (
-                          <MicOff className="w-3 h-3 text-red-400 flex-shrink-0" />
-                        ) : (
-                          <Mic className="w-3 h-3 text-green-400 flex-shrink-0" />
+                        {isMe && (
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 border-red-500/50 text-red-400">
+                            You
+                          </Badge>
                         )}
                       </div>
-
-                      <div className="flex items-center gap-2">
-                        {getSpeakingIndicator(participant)}
-                        
-                        {participant.id !== userId && (
-                          <div className="flex items-center gap-1">
-                            <VolumeX className="w-3 h-3 text-gray-400" />
-                            <Slider
-                              value={[participant.userVolume ?? masterVolume]}
-                              onValueChange={(value) => setParticipantVolume(participant.id, value[0])}
-                              max={100}
-                              step={1}
-                              className="w-16"
-                            />
-                            <Volume2 className="w-3 h-3 text-gray-400" />
-                          </div>
-                        )}
-                        
-                        <span className={`text-xs ${getConnectionQualityColor(participant.connectionQuality)}`}>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <Wifi className={`w-3 h-3 ${
+                          participant.connectionQuality === 'good' ? 'text-green-400' :
+                          participant.connectionQuality === 'medium' ? 'text-yellow-400' :
+                          'text-red-400'
+                        }`} />
+                        <span className="text-[10px] text-gray-500">
                           {participant.connectionQuality}
                         </span>
                       </div>
                     </div>
-                  ))}
+                    
+                    <div className="flex items-center gap-2">
+                      <div className={`p-2 rounded-lg ${
+                        participant.isMuted 
+                          ? 'bg-red-500/20 text-red-400' 
+                          : 'bg-green-500/20 text-green-400'
+                      }`}>
+                        {participant.isMuted ? (
+                          <MicOff className="w-4 h-4" />
+                        ) : (
+                          <Mic className="w-4 h-4" />
+                        )}
+                      </div>
+                      
+                      {!isMe && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className={`h-8 w-8 hover:bg-gray-700/50 transition-colors ${
+                            isExpanded ? 'text-red-400 hover:text-red-300' : 'text-gray-400 hover:text-white'
+                          }`}
+                          onClick={() => setExpandedUserId(isExpanded ? null : participant.id)}
+                        >
+                          <Settings className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {!isMe && isExpanded && (
+                    <div className="px-4 pb-3 space-y-2 border-t border-gray-700/50">
+                      <div className="flex items-center justify-between text-xs pt-3">
+                        <span className="text-gray-400">Volume</span>
+                        <span className="font-medium text-red-400">{userVolumes.get(participant.id) ?? 100}%</span>
+                      </div>
+                      <Slider
+                        value={[userVolumes.get(participant.id) ?? 100]}
+                        onValueChange={([value]) => handleVolumeChange(participant.id, value)}
+                        min={0}
+                        max={100}
+                        step={1}
+                        className="w-full"
+                      />
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
-
-            <div className="text-xs text-gray-400 text-center pt-2 border-t border-gray-700">
-              {isDemoMode 
-                ? 'Demo mode - simulated voice communication'
-                : 'Using WebRTC for peer-to-peer voice communication'
-              }
-            </div>
-          </>
+              );
+            })}
+          </div>
         )}
+
+        {isConnected && participants.length === 0 && (
+          <div className="text-center py-8 text-gray-500">
+            <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
+            <p className="text-sm">Waiting for others to join...</p>
+          </div>
+        )}
+
+        <div className="space-y-2">
+          {!isConnected ? (
+            <Button
+              onClick={connectToVoice}
+              className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-semibold shadow-lg hover:shadow-green-500/25 transition-all duration-200"
+              size="lg"
+            >
+              <User className="w-5 h-5 mr-2" />
+              Join Voice Channel
+            </Button>
+          ) : (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  onClick={toggleMute}
+                  className={`font-medium transition-all duration-200 ${
+                    isMuted
+                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-red-500/25'
+                      : 'bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-green-500/25'
+                  }`}
+                  disabled={isDeafened}
+                  size="lg"
+                >
+                  {isMuted ? (
+                    <>
+                      <MicOff className="w-5 h-5 mr-2" />
+                      Muted
+                    </>
+                  ) : (
+                    <>
+                      <Mic className="w-5 h-5 mr-2" />
+                      Unmuted
+                    </>
+                  )}
+                </Button>
+                
+                <Button
+                  onClick={toggleDeafen}
+                  className={`font-medium transition-all duration-200 ${
+                    isDeafened
+                      ? 'bg-red-600 hover:bg-red-700 text-white shadow-lg hover:shadow-red-500/25'
+                      : 'bg-gray-700 hover:bg-gray-600 text-white'
+                  }`}
+                  size="lg"
+                >
+                  {isDeafened ? (
+                    <>
+                      <VolumeX className="w-5 h-5 mr-2" />
+                      Deafened
+                    </>
+                  ) : (
+                    <>
+                      <Volume2 className="w-5 h-5 mr-2" />
+                      Audio
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              <Button
+                onClick={disconnectFromVoice}
+                variant="outline"
+                className="w-full border-red-500/50 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                size="lg"
+              >
+                <X className="w-5 h-5 mr-2" />
+                Leave Voice
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
     </Card>
   );

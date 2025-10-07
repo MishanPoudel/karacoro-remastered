@@ -42,14 +42,19 @@ function initializeSocket(server, rooms) {
     socket.on('video_ended', () => socketHandlers.handleVideoEnded(socket));
 
     // Voice chat events (always enabled now)
-    socket.on('voice_join', (data) => voiceHandlers.handleVoiceJoin(socket, data));
+    socket.on('voice_join', (data) => {
+      console.log('\\n🎤 [SOCKET] ========================================');
+      console.log('🎤 [SOCKET] Received voice_join event');
+      console.log('🎤 [SOCKET] Data:', JSON.stringify(data, null, 2));
+      console.log('🎤 [SOCKET] From socket:', socket.id);
+      console.log('🎤 [SOCKET] Socket rooms:', Array.from(socket.rooms));
+      console.log('🎤 [SOCKET] ========================================\\n');
+      voiceHandlers.handleVoiceJoin(socket, data);
+    });
     socket.on('voice_offer', (data) => voiceHandlers.handleVoiceOffer(socket, data));
     socket.on('voice_answer', (data) => voiceHandlers.handleVoiceAnswer(socket, data));
     socket.on('voice_ice_candidate', (data) => voiceHandlers.handleIceCandidate(socket, data));
-    socket.on('voice_mute_status', (data) => voiceHandlers.handleMuteStatus(socket, data));
-    socket.on('voice_activity', (data) => voiceHandlers.handleVoiceActivity(socket, data));
-    socket.on('voice_connection_quality', (data) => voiceHandlers.handleConnectionQuality(socket, data));
-    socket.on('voice_reconnect_request', (data) => voiceHandlers.handleReconnectRequest(socket, data));
+    socket.on('voice_toggle_mute', (data) => voiceHandlers.handleMuteStatus(socket, data));
     socket.on('voice_leave', (data) => voiceHandlers.handleVoiceLeave(socket, data));
 
     // Error handling

@@ -162,6 +162,7 @@ export default function RoomPage() {
               socket={socket}
               roomId={roomId}
               userId={getOrCreateUserId()}
+              username={roomState.username}
             />
             
             <UserPanel
@@ -219,6 +220,7 @@ export default function RoomPage() {
                 socket={socket}
                 roomId={roomId}
                 userId={getOrCreateUserId()}
+                username={roomState.username}
               />
             </TabsContent>
           </Tabs>
