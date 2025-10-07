@@ -350,4 +350,6 @@ LOG_LEVEL=debug npm run dev
 
 ## 📄 License
 
-MIT License - see LICENSE file for details.
+MIT License - see LICENSE file for details.#   k a r a c o r o - r e m a s t e r e d - b a c k e n d 
+ 
+ 

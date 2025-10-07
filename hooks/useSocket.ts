@@ -168,8 +168,6 @@ export const useSocket = () => {
 
     // Chat events
     socket.on('chat_message', (message) => {
-      console.log('Received message:', message);
-      
       // Play notification sound for system messages
       if (message.isSystem) {
         const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmAeATCG1O7Afh8ECU622uvBaCYGMYnX8dONOgjwaufts18xCU2k5P6raxsEO4vS8tlkpT9hVcnTDzuD17nN8ldaTm1X9Rl3ndHxumwUlr/f5tSX2d4Db');

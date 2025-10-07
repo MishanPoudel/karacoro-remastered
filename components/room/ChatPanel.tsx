@@ -18,21 +18,6 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
   const [message, setMessage] = useState('');
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  
-  // Debug logging
-  console.log('ChatPanel: Received messages prop:', messages);
-  console.log('ChatPanel: Messages length:', messages?.length || 0);
-  if (messages && messages.length > 0) {
-    console.log('ChatPanel: Sample message structure:', messages[0]);
-    messages.forEach((msg, index) => {
-      console.log(`Message ${index}:`, {
-        id: msg.id,
-        username: msg.username,
-        isSystem: msg.isSystem,
-        message: msg.message.substring(0, 50)
-      });
-    });
-  }
 
   // Auto-scroll to bottom when new messages arrive (but not when user is scrolled up)
   useEffect(() => {
@@ -111,32 +96,10 @@ export function ChatPanel({ messages, onSendMessage }: ChatPanelProps) {
                         {formatMessageTime(msg.timestamp)}
                       </span>
                     </div>
-                    <div className="bg-gray-700/50 rounded-lg px-3 py-2 group-hover:bg-gray-600/50 transition-colors">
+                    <div className="bg-gray-700/50 rounded-lg px-3 py-2">
                       <p className="text-sm text-gray-200 break-words">
                         {msg.message}
                       </p>
-                      <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => console.log('Reacted with ❤️ to:', msg.id)}
-                          className="text-xs hover:bg-gray-600 px-1 rounded transition-colors"
-                          title="React with heart"
-                        >❤️</button>
-                        <button 
-                          onClick={() => console.log('Reacted with 😂 to:', msg.id)}
-                          className="text-xs hover:bg-gray-600 px-1 rounded transition-colors"
-                          title="React with laugh"
-                        >😂</button>
-                        <button 
-                          onClick={() => console.log('Reacted with 🔥 to:', msg.id)}
-                          className="text-xs hover:bg-gray-600 px-1 rounded transition-colors"
-                          title="React with fire"
-                        >🔥</button>
-                        <button 
-                          onClick={() => console.log('Reacted with 👍 to:', msg.id)}
-                          className="text-xs hover:bg-gray-600 px-1 rounded transition-colors"
-                          title="React with thumbs up"
-                        >👍</button>
-                      </div>
                     </div>
                   </div>
                 </div>
