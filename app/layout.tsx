@@ -3,6 +3,7 @@ import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from '@/lib/error-boundary';
+import SimpleAnalyticsLoader from '@/components/SimpleAnalyticsLoader';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -75,11 +76,8 @@ export default function RootLayout({
               closeButton
               richColors
             />
+            <SimpleAnalyticsLoader />
         </ErrorBoundary>
-        
-        {/* Simple Analytics - 100% privacy-first analytics */}
-        <script data-collect-dnt="true" async src="https://scripts.simpleanalyticscdn.com/latest.js"></script>
-        <noscript><img src="https://queue.simpleanalyticscdn.com/noscript.gif?collect-dnt=true" alt="" referrerPolicy="no-referrer-when-downgrade"/></noscript>
       </body>
     </html>
   );

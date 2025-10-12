@@ -18,9 +18,7 @@ import {
   checkVideoEmbeddable,
   getPopularKaraokeSongs,
   YouTubeSearchResult,
-  getCacheStats,
-} from '@/lib/youtube-api-optimized';
-import { searchDebouncer } from '@/lib/youtube-cache';
+} from '@/lib/youtube-api-enhanced';
 import { toast } from 'sonner';
 import Image from 'next/image';
 
@@ -71,7 +69,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      searchDebouncer.cancelAll();
+      // no-op: explicit search only (no debouncer to cancel)
     };
   }, []);
 
@@ -152,9 +150,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       } else {
         toast.success(`Found ${filteredResults.length} videos`);
         
-        // Show cache stats for debugging
-        const stats = getCacheStats();
-        console.log('🎯 API Cache Stats:', stats);
+  // No cache stats available in this build
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -164,37 +160,27 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
     }
   };
 
-  // OPTIMIZATION: Debounced search function
-  const debouncedSearch = searchDebouncer.debounce('search', handleSearch, 500);
+  // Explicit search only — user triggers with Enter or Search button
 
   const handleAddFromSearch = async (video: YouTubeSearchResult) => {
     setAddingVideoId(video.id);
     try {
-      // OPTIMIZATION: Use cached embeddable status if available
-      let isEmbeddable = video.isEmbeddable;
-      if (isEmbeddable === undefined) {
-        isEmbeddable = await checkVideoEmbeddable(video.id);
-      }
-      
+      // Check embeddable status via API
+      const isEmbeddable = await checkVideoEmbeddable(video.id);
       if (!isEmbeddable) {
         toast.error('This video cannot be embedded and played');
         return;
       }
 
       const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
-      const thumbnail = getVideoThumbnail(video.id, 'medium');
-      
-      // OPTIMIZATION: Use cached duration if available
-      let duration = video.durationInSeconds || 0;
-      if (!duration) {
-        const videoDetails = await getVideoDetails(video.id);
-        duration = videoDetails?.duration || 0;
-      }
-      
+
+      // Prefer thumbnail from search result but fall back to details
+      const videoDetails = await getVideoDetails(video.id);
+      const duration = videoDetails?.duration || 0;
+      const thumbnail = video.thumbnail || videoDetails?.thumbnail || getVideoThumbnail(video.id, 'medium');
+
       onAddToQueue(videoUrl, video.title, duration, thumbnail);
-      
       toast.success(`Added "${video.title}" to queue!`);
-      
     } catch (error) {
       console.error('Error adding video from search:', error);
       toast.error('Failed to add video');
@@ -206,8 +192,6 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
   const handleKeyPress = (e: React.KeyboardEvent, action: 'search' | 'url') => {
     if (e.key === 'Enter') {
       if (action === 'search') {
-        // Cancel debounced search and trigger immediate search
-        searchDebouncer.cancel('search');
         handleSearch();
       } else {
         handleAddByUrl();
@@ -215,16 +199,10 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
     }
   };
 
-  // OPTIMIZATION: Auto-search with debouncing when typing
+  // Explicit search only — update query, clear results for short queries
   const handleSearchInputChange = (value: string) => {
     setSearchQuery(value);
-    
-    // Auto-search after 500ms of no typing (only if query is long enough)
-    if (value.trim().length >= 3) {
-      debouncedSearch();
-    } else {
-      // Cancel pending search if query is too short
-      searchDebouncer.cancel('search');
+    if (value.trim().length < 1) {
       setSearchResults([]);
     }
   };
@@ -409,6 +387,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                               width={96} 
                               height={72} 
                               className="w-full sm:w-20 md:w-24 h-auto sm:h-15 md:h-18 object-cover rounded-md flex-shrink-0" 
+                              style={{ width: 'auto', height: 'auto' }}
                             />
                             <div className="flex-1 min-w-0 w-full sm:w-auto">
                               <h4 className="text-sm font-medium text-white group-hover:text-red-400 transition-colors line-clamp-2">
@@ -507,6 +486,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                             width={96} 
                             height={72} 
                             className="w-full sm:w-20 md:w-24 h-auto sm:h-15 md:h-18 object-cover rounded-md flex-shrink-0" 
+                            style={{ width: 'auto', height: 'auto' }}
                           />
                           <div className="flex-1 min-w-0 w-full sm:w-auto">
                             <h4 className="text-sm font-medium text-white group-hover:text-red-400 transition-colors line-clamp-2">
@@ -597,6 +577,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                               width={80} 
                               height={60} 
                               className="w-16 h-12 sm:w-20 sm:h-15 object-cover rounded-md flex-shrink-0" 
+                              style={{ width: 'auto', height: 'auto' }}
                             />
                             
                             {/* Video Info */}

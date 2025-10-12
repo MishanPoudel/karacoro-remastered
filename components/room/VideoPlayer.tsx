@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Play, Pause, SkipForward, Volume2, VolumeX, Music, RotateCcw, Users, AlertTriangle } from 'lucide-react';
 import { VideoState, QueueItem } from '@/hooks/useSocket';
-import { extractVideoId } from '@/lib/youtube-api-optimized';
+import { extractVideoId } from '@/lib/youtube-api';
 import { toast } from 'sonner';
 import Image from 'next/image';
 
@@ -541,6 +541,7 @@ const VideoPlayerComponent = ({
             width={640}
             height={360}
             className="w-16 h-12 object-cover rounded"
+            style={{ width: 'auto' }}
           />
         </div>
 
@@ -641,11 +642,14 @@ const VideoPlayerComponent = ({
 // OPTIMIZATION: Export memoized component with custom comparison
 export const VideoPlayer = memo(VideoPlayerComponent, (prevProps, nextProps) => {
   // Custom comparison for better performance
+  // Compare by videoId (the QueueItem uses `videoId`) and key playback properties
+  const prevId = prevProps.currentVideo?.videoId ?? null;
+  const nextId = nextProps.currentVideo?.videoId ?? null;
+
   return (
-    prevProps.currentVideo?.id === nextProps.currentVideo?.id &&
-    prevProps.videoState.isPlaying === nextProps.videoState.isPlaying &&
-    prevProps.videoState.currentTime === nextProps.videoState.currentTime &&
-    prevProps.videoState.lastUpdate === nextProps.videoState.lastUpdate &&
+    prevId === nextId &&
+    prevProps.videoState?.isPlaying === nextProps.videoState?.isPlaying &&
+    prevProps.videoState?.currentTime === nextProps.videoState?.currentTime &&
     prevProps.isHost === nextProps.isHost
   );
 });
