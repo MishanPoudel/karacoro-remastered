@@ -17,8 +17,10 @@ import {
   getVideoThumbnail,
   checkVideoEmbeddable,
   getPopularKaraokeSongs,
-  YouTubeSearchResult
-} from '@/lib/youtube-api-enhanced';
+  YouTubeSearchResult,
+  getCacheStats,
+} from '@/lib/youtube-api-optimized';
+import { searchDebouncer } from '@/lib/youtube-cache';
 import { toast } from 'sonner';
 import Image from 'next/image';
 
@@ -52,6 +54,8 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
         
         if (isMock) {
           console.log('Using mock popular songs - YouTube API not configured');
+        } else {
+          console.log('🎵 Popular songs loaded with 24h caching');
         }
       } catch (error) {
         console.error('Error loading popular songs:', error);
@@ -62,6 +66,13 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
     };
 
     loadPopularSongs();
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      searchDebouncer.cancelAll();
+    };
   }, []);
 
   const handleAddByUrl = async () => {
@@ -140,6 +151,10 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
         toast.info('No videos found for your search');
       } else {
         toast.success(`Found ${filteredResults.length} videos`);
+        
+        // Show cache stats for debugging
+        const stats = getCacheStats();
+        console.log('🎯 API Cache Stats:', stats);
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -149,11 +164,18 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
     }
   };
 
+  // OPTIMIZATION: Debounced search function
+  const debouncedSearch = searchDebouncer.debounce('search', handleSearch, 500);
+
   const handleAddFromSearch = async (video: YouTubeSearchResult) => {
     setAddingVideoId(video.id);
     try {
-      // Double-check if video is embeddable
-      const isEmbeddable = await checkVideoEmbeddable(video.id);
+      // OPTIMIZATION: Use cached embeddable status if available
+      let isEmbeddable = video.isEmbeddable;
+      if (isEmbeddable === undefined) {
+        isEmbeddable = await checkVideoEmbeddable(video.id);
+      }
+      
       if (!isEmbeddable) {
         toast.error('This video cannot be embedded and played');
         return;
@@ -162,9 +184,12 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       const videoUrl = `https://www.youtube.com/watch?v=${video.id}`;
       const thumbnail = getVideoThumbnail(video.id, 'medium');
       
-      // Get detailed duration info
-      const videoDetails = await getVideoDetails(video.id);
-      const duration = videoDetails?.duration || 0;
+      // OPTIMIZATION: Use cached duration if available
+      let duration = video.durationInSeconds || 0;
+      if (!duration) {
+        const videoDetails = await getVideoDetails(video.id);
+        duration = videoDetails?.duration || 0;
+      }
       
       onAddToQueue(videoUrl, video.title, duration, thumbnail);
       
@@ -181,10 +206,26 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
   const handleKeyPress = (e: React.KeyboardEvent, action: 'search' | 'url') => {
     if (e.key === 'Enter') {
       if (action === 'search') {
+        // Cancel debounced search and trigger immediate search
+        searchDebouncer.cancel('search');
         handleSearch();
       } else {
         handleAddByUrl();
       }
+    }
+  };
+
+  // OPTIMIZATION: Auto-search with debouncing when typing
+  const handleSearchInputChange = (value: string) => {
+    setSearchQuery(value);
+    
+    // Auto-search after 500ms of no typing (only if query is long enough)
+    if (value.trim().length >= 3) {
+      debouncedSearch();
+    } else {
+      // Cancel pending search if query is too short
+      searchDebouncer.cancel('search');
+      setSearchResults([]);
     }
   };
 
@@ -307,9 +348,9 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <Input
-                    placeholder="Search for karaoke songs..."
+                    placeholder="Search for karaoke songs... (auto-search after 3+ chars)"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleSearchInputChange(e.target.value)}
                     className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500/20 h-10 sm:h-12 text-sm sm:text-base"
                     onKeyPress={(e) => handleKeyPress(e, 'search')}
                     disabled={isSearching}
@@ -345,9 +386,16 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                 {/* Search Results */}
                 {searchResults.length > 0 && (
                   <div className="space-y-3">
-                    <h4 className="text-sm font-medium text-gray-300">
-                      Search Results {isSearchMock ? '(Mock Data)' : '(Live Results)'}
-                    </h4>
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-medium text-gray-300">
+                        Search Results {isSearchMock ? '(Mock Data)' : '(Live Results)'}
+                      </h4>
+                      {!isSearchMock && (
+                        <Badge variant="outline" className="border-green-500 text-green-400 bg-green-500/10 text-xs">
+                          🚀 Optimized with Smart Caching
+                        </Badge>
+                      )}
+                    </div>
                     <div className="max-h-64 sm:max-h-80 overflow-y-auto border border-gray-700/50 rounded-lg scrollbar-hide">
                       <div className="space-y-2 sm:space-y-3 p-2 sm:p-4">
                         {searchResults.map((video) => (

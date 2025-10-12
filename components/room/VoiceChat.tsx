@@ -337,11 +337,28 @@ export function VoiceChat({ socket, roomId, userId, username }: VoiceChatProps) 
     });
 
     socket.on('error', (error) => {
-      console.error('\\n❌ [VOICE CLIENT] ========================================');
-      console.error('❌ [VOICE CLIENT] Received error from server!');
-      console.error('❌ [VOICE CLIENT] Error:', error);
-      console.error('❌ [VOICE CLIENT] ========================================\\n');
-      toast.error(error.message || 'Voice chat error');
+      try {
+        console.error('\\n❌ [VOICE CLIENT] ========================================');
+        console.error('❌ [VOICE CLIENT] Received error from server!');
+        // Safely stringify unknown error shapes
+        try {
+          console.error('❌ [VOICE CLIENT] Error:', typeof error === 'object' ? JSON.parse(JSON.stringify(error)) : error);
+        } catch (e) {
+          console.error('❌ [VOICE CLIENT] Error (raw):', error);
+        }
+        console.error('❌ [VOICE CLIENT] ========================================\\n');
+
+        // Normalize message
+        const message = (error && typeof error === 'object' && 'message' in error && (error as any).message)
+          ? (error as any).message
+          : (typeof error === 'string' ? error : 'Voice chat error');
+
+        toast.error(message);
+      } catch (handlerErr) {
+        // Fallback: ensure the error handler never throws
+        console.error('❌ [VOICE CLIENT] Error handler failed:', handlerErr);
+        toast.error('Voice chat error');
+      }
     });
 
     return () => {

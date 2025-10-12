@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, memo } from 'react';
 import YouTube, { YouTubeProps } from 'react-youtube';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
 import { Play, Pause, SkipForward, Volume2, VolumeX, Music, RotateCcw, Users, AlertTriangle } from 'lucide-react';
 import { VideoState, QueueItem } from '@/hooks/useSocket';
-import { extractVideoId } from '@/lib/youtube-api-enhanced';
+import { extractVideoId } from '@/lib/youtube-api-optimized';
 import { toast } from 'sonner';
 import Image from 'next/image';
 
@@ -20,14 +20,15 @@ interface VideoPlayerProps {
   onSkip: () => void;
 }
 
-export function VideoPlayer({
+// OPTIMIZATION: Memoized VideoPlayer component to prevent unnecessary re-renders
+const VideoPlayerComponent = ({
   currentVideo,
   videoState,
   isHost,
   onVideoStateChange,
   onVideoEnd,
   onSkip
-}: VideoPlayerProps) {
+}: VideoPlayerProps) => {
   const playerRef = useRef<any>(null);
   const [isReady, setIsReady] = useState(false);
   const [volume, setVolume] = useState(80);
@@ -635,4 +636,16 @@ export function VideoPlayer({
       </div>
     </Card>
   );
-}
+};
+
+// OPTIMIZATION: Export memoized component with custom comparison
+export const VideoPlayer = memo(VideoPlayerComponent, (prevProps, nextProps) => {
+  // Custom comparison for better performance
+  return (
+    prevProps.currentVideo?.id === nextProps.currentVideo?.id &&
+    prevProps.videoState.isPlaying === nextProps.videoState.isPlaying &&
+    prevProps.videoState.currentTime === nextProps.videoState.currentTime &&
+    prevProps.videoState.lastUpdate === nextProps.videoState.lastUpdate &&
+    prevProps.isHost === nextProps.isHost
+  );
+});

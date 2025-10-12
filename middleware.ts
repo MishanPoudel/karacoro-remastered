@@ -14,9 +14,9 @@ export function middleware(request: NextRequest) {
   response.headers.set(
     'Content-Security-Policy',
     "default-src 'self'; " +
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://www.gstatic.com https://s.ytimg.com; " +
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.youtube.com https://www.gstatic.com https://s.ytimg.com https://scripts.simpleanalyticscdn.com; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
-    "img-src 'self' data: https: blob:; " +
+  "img-src 'self' data: https: blob: https://queue.simpleanalyticscdn.com; " +
     "font-src 'self' https://fonts.gstatic.com; " +
     "connect-src 'self' https://www.googleapis.com https://www.youtube.com wss: ws:; " +
     "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; " +
