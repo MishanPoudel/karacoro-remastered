@@ -1,12 +1,13 @@
 {
-  "name": "Karaoke Party",
-  "short_name": "Karaoke Party",
-  "description": "Sing together online with friends in real-time karaoke rooms",
+  "name": "KaraCoro - Online Karaoke Party",
+  "short_name": "KaraCoro",
+  "description": "Sing together online with friends in real-time karaoke rooms. Real-time sync, voice chat, and millions of songs!",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#000000",
   "theme_color": "#ef4444",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "icons": [
     {
       "src": "/icon-192x192.png",
@@ -19,9 +20,33 @@
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "maskable any"
+    },
+    {
+      "src": "/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
     }
   ],
   "categories": ["entertainment", "music", "social"],
   "lang": "en",
-  "dir": "ltr"
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "shortcuts": [
+    {
+      "name": "Create Room",
+      "short_name": "Create",
+      "description": "Create a new karaoke room",
+      "url": "/rooms",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Join Room",
+      "short_name": "Join",
+      "description": "Join an existing karaoke room",
+      "url": "/rooms",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ],
+  "screenshots": []
 }

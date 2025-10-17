@@ -17,10 +17,10 @@ export default function Home() {
   const scrollToSection = (id: string) => {
     const element = document.getElementById(id);
     if (element) {
-      const targetPosition = element.offsetTop - 80; // Account for any fixed header
+      const targetPosition = element.offsetTop - 80;
       const startPosition = window.pageYOffset;
       const distance = targetPosition - startPosition;
-      const duration = 1200; // 1.2 second smooth animation
+      const duration = 1200;
       let start = 0;
 
       const animation = (currentTime: number) => {
@@ -31,7 +31,6 @@ export default function Home() {
         if (timeElapsed < duration) requestAnimationFrame(animation);
       };
 
-      // Enhanced easing function for smoother animation
       const easeInOutCubic = (t: number, b: number, c: number, d: number) => {
         t /= d / 2;
         if (t < 1) return c / 2 * t * t * t + b;
@@ -128,31 +127,33 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-red-900 via-black to-red-900 text-white overflow-x-hidden scrollbar-hide">
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-md border-b border-red-500/20">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/80 backdrop-blur-xl border-b border-red-500/30 shadow-2xl shadow-red-500/10">
         <div className="container mx-auto px-4 sm:px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 sm:gap-3">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-red-500 rounded-lg flex items-center justify-center">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center shadow-lg shadow-red-500/30">
                 <Mic className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
               </div>
-              <span className="text-lg sm:text-2xl font-bold">KaraCoro</span>
+              <span className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                KaraCoro
+              </span>
             </div>
             <div className="hidden md:flex items-center gap-6">
               <button 
                 onClick={handleHowItWorks}
-                className="text-gray-300 hover:text-white transition-colors"
+                className="text-gray-300 hover:text-white transition-all hover:scale-105"
               >
                 How it Works
               </button>
               <button 
                 onClick={() => scrollToSection('features')}
-                className="text-gray-300 hover:text-white transition-colors"
+                className="text-gray-300 hover:text-white transition-all hover:scale-105"
               >
                 Features
               </button>
               <Button 
                 onClick={handleGetStarted}
-                className="bg-red-500 hover:bg-red-600"
+                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/30 transition-all hover:scale-105"
               >
                 Get Started
               </Button>
@@ -207,7 +208,7 @@ export default function Home() {
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 md:gap-8 max-w-4xl mx-auto px-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 lg:gap-8 max-w-4xl mx-auto px-4">
             {stats.map((stat, index) => (
               <div key={index} className="text-center group">
                 <div className="flex flex-col items-center mb-2 sm:mb-3">
@@ -396,8 +397,8 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-8 sm:py-12 bg-black">
+      {/* Footer Section */}
+      <footer className="h-24 bg-black flex items-center">
         <div className="container px-4 sm:px-6 mx-auto">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 sm:gap-3">

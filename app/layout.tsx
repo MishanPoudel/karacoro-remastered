@@ -4,6 +4,7 @@ import { Inter } from 'next/font/google';
 import { Toaster } from 'sonner';
 import { ErrorBoundary } from '@/lib/error-boundary';
 import SimpleAnalyticsLoader from '@/components/SimpleAnalyticsLoader';
+import PWAInit from '@/components/PWAInit';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -77,6 +78,7 @@ export default function RootLayout({
               richColors
             />
             <SimpleAnalyticsLoader />
+            <PWAInit />
         </ErrorBoundary>
       </body>
     </html>

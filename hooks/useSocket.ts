@@ -34,6 +34,7 @@ export interface QueueItem {
 export interface ChatMessage {
   id: number;
   username: string;
+  userId?: string;
   message: string;
   timestamp: Date;
   isHost: boolean;

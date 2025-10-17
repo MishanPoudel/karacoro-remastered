@@ -46,18 +46,43 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
     const loadPopularSongs = async () => {
       setIsLoadingPopular(true);
       try {
-        const { results, isMock } = await getPopularKaraokeSongs();
-        setPopularSongs(results);
-        setIsPopularMock(isMock);
+        // Use server-side cached API route
+        const response = await fetch('/api/youtube/popular');
         
-        if (isMock) {
-          console.log('Using mock popular songs - YouTube API not configured');
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          console.error('API error:', errorData);
+          throw new Error(errorData.error || `HTTP ${response.status}: Failed to load popular songs`);
+        }
+
+        const data = await response.json();
+        
+        if (!data.results || !Array.isArray(data.results)) {
+          throw new Error('Invalid response format from API');
+        }
+        
+        // Exclude videos from or mentioning "sing king" to avoid low-quality uploads
+        const filtered = data.results.filter((v: any) => {
+          const title = (v.title || '').toLowerCase();
+          const channel = (v.channelTitle || '').toLowerCase();
+          return !title.includes('sing king') && !channel.includes('sing king');
+        });
+        
+        setPopularSongs(filtered);
+        setIsPopularMock(data.mock || false);
+        
+        if (data.mock) {
+          console.log('⚠️ Using mock popular songs (YouTube API unavailable)');
+          toast.info('Using sample songs - YouTube API unavailable');
+        } else if (data.cached) {
+          console.log('✅ Popular songs loaded from cache');
         } else {
-          console.log('🎵 Popular songs loaded with 24h caching');
+          console.log('🎵 Popular songs loaded fresh (cached for 24h)');
         }
       } catch (error) {
         console.error('Error loading popular songs:', error);
-        toast.error('Failed to load popular songs');
+        const errorMessage = error instanceof Error ? error.message : 'Failed to load popular songs';
+        toast.error(errorMessage);
       } finally {
         setIsLoadingPopular(false);
       }
@@ -133,24 +158,41 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
 
     setIsSearching(true);
     try {
-      const { results, isMock } = await searchYouTubeVideos(searchQuery, 15);
-      // Filter out results from the "singking" channel
-      const filteredResults = results.filter(
-        (video) => video.channelTitle.toLowerCase() !== 'sing king'
-      );
-      setSearchResults(filteredResults);
-      setIsSearchMock(isMock);
+      // Use server-side API route with caching
+      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(searchQuery)}&maxResults=15`);
       
-      if (isMock) {
+      if (response.status === 429) {
+        toast.error('Too many requests. Please wait a minute and try again.');
+        setIsSearching(false);
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+
+      const data = await response.json();
+      
+      // Filter out results from the "sing king" channel
+      const filteredResults = data.results.filter(
+        (video: any) => video.channelTitle.toLowerCase() !== 'sing king'
+      );
+      
+      setSearchResults(filteredResults);
+      setIsSearchMock(data.isMock || false);
+      
+      if (data.isMock) {
         toast.info('Using mock search results - YouTube API not configured', {
           description: 'Configure your YouTube API key for real search results'
         });
       } else if (filteredResults.length === 0) {
         toast.info('No videos found for your search');
       } else {
-        toast.success(`Found ${filteredResults.length} videos`);
-        
-  // No cache stats available in this build
+        if (data.cached) {
+          toast.success(`Found ${filteredResults.length} videos (from cache)`);
+        } else {
+          toast.success(`Found ${filteredResults.length} videos`);
+        }
       }
     } catch (error) {
       console.error('Search error:', error);
@@ -223,27 +265,29 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       {/* Header Section */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className="p-1.5 sm:p-2 bg-red-500/20 rounded-lg">
-            <ListMusic className="w-5 h-5 sm:w-6 sm:h-6 text-red-500" />
+          <div className="p-1.5 sm:p-2 bg-gradient-to-br from-red-500/30 to-red-600/20 rounded-lg shadow-lg shadow-red-500/20">
+            <ListMusic className="w-5 h-5 sm:w-6 sm:h-6 text-red-400" />
           </div>
           <div>
-            <h2 className="text-xl sm:text-2xl font-bold text-white">Video Queue</h2>
+            <h2 className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+              Video Queue
+            </h2>
             <p className="text-sm sm:text-base text-gray-400 hidden sm:block">Add songs and manage the karaoke queue</p>
           </div>
         </div>
-        <Badge variant="secondary" className="bg-red-500/20 text-red-400 px-2 sm:px-3 py-1 text-sm">
+        <Badge variant="secondary" className="bg-gradient-to-r from-red-500/20 to-red-600/20 text-red-400 border border-red-500/30 px-2 sm:px-3 py-1 text-sm shadow-lg shadow-red-500/10">
           {queue.length} in queue
         </Badge>
       </div>
 
       {/* Main Queue Interface */}
-      <Card className="bg-gray-800/50 border-red-500/30 overflow-hidden">
+      <Card className="bg-gray-800/50 backdrop-blur-xl border-red-500/30 shadow-2xl shadow-red-500/10 overflow-hidden">
         <Tabs defaultValue="add" className="w-full">
-          <div className="border-b border-gray-700 bg-gray-900/50 overflow-hidden">
+          <div className="border-b border-gray-700 bg-gradient-to-r from-gray-900/80 via-gray-900/70 to-gray-900/80 overflow-hidden">
             <TabsList className="grid w-full grid-cols-3 bg-transparent border-none h-12 sm:h-14 overflow-hidden">
               <TabsTrigger 
                 value="add" 
-                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm overflow-hidden"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-500/20 data-[state=active]:to-red-600/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm overflow-hidden hover:bg-gray-800/50"
               >
                 <Plus className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 flex-shrink-0" />
                 <span className="hidden sm:inline truncate">Add Songs</span>
@@ -251,7 +295,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               </TabsTrigger>
               <TabsTrigger 
                 value="popular"
-                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm overflow-hidden"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-500/20 data-[state=active]:to-red-600/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm overflow-hidden hover:bg-gray-800/50"
               >
                 <Music className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 flex-shrink-0" />
                 <span className="hidden sm:inline truncate">Popular</span>
@@ -264,7 +308,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               </TabsTrigger>
               <TabsTrigger 
                 value="queue"
-                className="data-[state=active]:bg-red-500/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm overflow-hidden"
+                className="data-[state=active]:bg-gradient-to-r data-[state=active]:from-red-500/20 data-[state=active]:to-red-600/20 data-[state=active]:text-red-400 data-[state=active]:border-b-2 data-[state=active]:border-red-500 rounded-none border-b-2 border-transparent transition-all text-xs sm:text-sm overflow-hidden hover:bg-gray-800/50"
               >
                 <PlayCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2 flex-shrink-0" />
                 <span className="hidden sm:inline truncate">Queue ({queue.length})</span>
@@ -278,22 +322,24 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               {/* Add by URL Section */}
               <div className="space-y-3 sm:space-y-4">
                 <div className="flex items-center gap-2 mb-2 sm:mb-3">
-                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <h3 className="text-base sm:text-lg font-semibold text-white">Add by YouTube URL</h3>
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <h3 className="text-base sm:text-lg font-semibold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                    Add by YouTube URL
+                  </h3>
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <Input
                     placeholder="Paste YouTube URL here..."
                     value={videoUrl}
                     onChange={(e) => setVideoUrl(e.target.value)}
-                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500/20 h-10 sm:h-12 text-sm sm:text-base"
+                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 h-10 sm:h-12 text-sm sm:text-base rounded-xl transition-all"
                     onKeyPress={(e) => handleKeyPress(e, 'url')}
                     disabled={isAdding}
                   />
                   <Button
                     onClick={handleAddByUrl}
                     disabled={isAdding || !videoUrl.trim()}
-                    className="bg-red-500 hover:bg-red-600 px-4 sm:px-6 h-10 sm:h-12 text-sm sm:text-base w-full sm:w-auto"
+                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/30 px-4 sm:px-6 h-10 sm:h-12 text-sm sm:text-base w-full sm:w-auto transition-all hover:scale-105"
                   >
                     {isAdding ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -314,11 +360,13 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               <div className="space-y-3 sm:space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2 sm:mb-3">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <h3 className="text-base sm:text-lg font-semibold text-white">Search YouTube</h3>
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <h3 className="text-base sm:text-lg font-semibold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                      Search YouTube
+                    </h3>
                   </div>
                   {isSearchMock && (
-                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 text-xs self-start sm:self-auto">
+                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-xs self-start sm:self-auto">
                       <AlertTriangle className="w-3 h-3 mr-1" />
                       MOCK DATA
                     </Badge>
@@ -326,17 +374,17 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                 </div>
                 <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
                   <Input
-                    placeholder="Search for karaoke songs... (auto-search after 3+ chars)"
+                    placeholder="Search for karaoke songs..."
                     value={searchQuery}
                     onChange={(e) => handleSearchInputChange(e.target.value)}
-                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-red-500/20 h-10 sm:h-12 text-sm sm:text-base"
+                    className="flex-1 bg-gray-700/50 border-gray-600 text-white placeholder-gray-400 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 h-10 sm:h-12 text-sm sm:text-base rounded-xl transition-all"
                     onKeyPress={(e) => handleKeyPress(e, 'search')}
                     disabled={isSearching}
                   />
                   <Button
                     onClick={handleSearch}
                     disabled={isSearching || !searchQuery.trim()}
-                    className="bg-red-500 hover:bg-red-600 px-4 sm:px-6 h-10 sm:h-12 text-sm sm:text-base w-full sm:w-auto"
+                    className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/30 px-4 sm:px-6 h-10 sm:h-12 text-sm sm:text-base w-full sm:w-auto transition-all hover:scale-105"
                   >
                     {isSearching ? (
                       <Loader2 className="w-4 h-4 animate-spin" />
@@ -365,21 +413,16 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                 {searchResults.length > 0 && (
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-medium text-gray-300">
+                      <h4 className="text-base sm:text-lg font-semibold text-white">
                         Search Results {isSearchMock ? '(Mock Data)' : '(Live Results)'}
                       </h4>
-                      {!isSearchMock && (
-                        <Badge variant="outline" className="border-green-500 text-green-400 bg-green-500/10 text-xs">
-                          🚀 Optimized with Smart Caching
-                        </Badge>
-                      )}
                     </div>
                     <div className="max-h-64 sm:max-h-80 overflow-y-auto border border-gray-700/50 rounded-lg scrollbar-hide">
                       <div className="space-y-2 sm:space-y-3 p-2 sm:p-4">
                         {searchResults.map((video) => (
                           <div
                             key={video.id}
-                            className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
+                            className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gradient-to-r from-gray-700/30 to-gray-800/30 rounded-lg hover:from-gray-700/50 hover:to-gray-800/50 transition-all group border border-gray-600/30 hover:border-red-500/30"
                           >
                             <Image 
                               src={video.thumbnail} 
@@ -418,7 +461,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                               onClick={() => handleAddFromSearch(video)}
                               size="sm"
                               disabled={addingVideoId === video.id}
-                              className="bg-red-500 hover:bg-red-600 flex-shrink-0 w-full sm:w-auto"
+                              className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/20 flex-shrink-0 w-full sm:w-auto transition-all hover:scale-105"
                             >
                               {addingVideoId === video.id ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -442,11 +485,13 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
               <div className="space-y-3 sm:space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                    <h3 className="text-base sm:text-lg font-semibold text-white">Popular Karaoke Songs</h3>
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                    <h3 className="text-base sm:text-lg font-semibold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                      Popular Karaoke Songs
+                    </h3>
                   </div>
                   {isPopularMock && (
-                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 text-xs self-start sm:self-auto">
+                    <Badge variant="secondary" className="bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 text-xs self-start sm:self-auto">
                       <AlertTriangle className="w-3 h-3 mr-1" />
                       MOCK DATA
                     </Badge>
@@ -478,7 +523,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                       {popularSongs.map((video) => (
                         <div
                           key={video.id}
-                          className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
+                          className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gradient-to-r from-gray-700/30 to-gray-800/30 rounded-lg hover:from-gray-700/50 hover:to-gray-800/50 transition-all group border border-gray-600/30 hover:border-red-500/30"
                         >
                           <Image 
                             src={video.thumbnail} 
@@ -517,7 +562,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                             onClick={() => handleAddFromSearch(video)}
                             size="sm"
                             disabled={addingVideoId === video.id}
-                            className="bg-red-500 hover:bg-red-600 flex-shrink-0 w-full sm:w-auto"
+                            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg shadow-red-500/20 flex-shrink-0 w-full sm:w-auto transition-all hover:scale-105"
                           >
                             {addingVideoId === video.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
@@ -545,8 +590,10 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
             <TabsContent value="queue" className="mt-0">
               <div className="space-y-3 sm:space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                  <h3 className="text-base sm:text-lg font-semibold text-white">Current Queue</h3>
+                  <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
+                  <h3 className="text-base sm:text-lg font-semibold bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+                    Current Queue
+                  </h3>
                 </div>
                 
                 {queue.length === 0 ? (
@@ -561,12 +608,12 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                       {queue.map((item, index) => (
                         <div
                           key={item.id}
-                          className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gray-700/30 rounded-lg hover:bg-gray-700/50 transition-all group"
+                          className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-gradient-to-r from-gray-700/30 to-gray-800/30 rounded-lg hover:from-gray-700/50 hover:to-gray-800/50 transition-all group border border-gray-600/30 hover:border-red-500/30"
                         >
                           {/* Mobile: Queue position and thumbnail in a row */}
                           <div className="flex items-center gap-3 w-full sm:w-auto">
                             {/* Queue Position */}
-                            <div className="flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-red-500 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-white">
+                            <div className="flex-shrink-0 w-6 h-6 sm:w-8 sm:h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold text-white shadow-lg shadow-red-500/30">
                               {index + 1}
                             </div>
                             

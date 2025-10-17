@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { roomStorage } from '@/lib/room-storage';
 
 // Force dynamic rendering for this API route
 export const dynamic = 'force-dynamic';
 
-// In-memory storage for demo purposes
-// In production, you would use a database
-const rooms = new Map<string, { roomId: string; name: string; createdAt: Date }>();
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { roomId, name } = body;
+    const { roomId, name, password } = body;
 
     // Validate input
     if (!roomId || !name) {
@@ -21,7 +18,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if room already exists
-    if (rooms.has(roomId)) {
+    if (roomStorage.hasRoom(roomId)) {
       return NextResponse.json(
         { error: 'Room already exists' },
         { status: 409 }
@@ -29,15 +26,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Create room
-    const room = {
-      roomId,
-      name: name.trim(),
-      createdAt: new Date(),
-    };
+    const room = roomStorage.createRoom(roomId, name, password);
 
-    rooms.set(roomId, room);
-
-    return NextResponse.json(room, { status: 201 });
+    // Return room without password
+    const safeRoom = roomStorage.getSafeRoom(roomId);
+    return NextResponse.json(safeRoom, { status: 201 });
   } catch (error) {
     console.error('Error creating room:', error);
     return NextResponse.json(
@@ -49,6 +42,6 @@ export async function POST(request: NextRequest) {
 
 export async function GET() {
   // Return all rooms (for debugging purposes)
-  const allRooms = Array.from(rooms.values());
+  const allRooms = roomStorage.getAllRooms().map(room => roomStorage.getSafeRoom(room.roomId));
   return NextResponse.json({ rooms: allRooms });
 }

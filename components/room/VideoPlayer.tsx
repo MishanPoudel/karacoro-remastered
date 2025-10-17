@@ -5,7 +5,7 @@ import YouTube, { YouTubeProps } from 'react-youtube';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Slider } from '@/components/ui/slider';
-import { Play, Pause, SkipForward, Volume2, VolumeX, Music, RotateCcw, Users, AlertTriangle } from 'lucide-react';
+import { Play, Pause, SkipForward, Volume2, VolumeX, Music, RotateCcw, Users, AlertTriangle, Crown } from 'lucide-react';
 import { VideoState, QueueItem } from '@/hooks/useSocket';
 import { extractVideoId } from '@/lib/youtube-api';
 import { toast } from 'sonner';
@@ -51,6 +51,8 @@ const VideoPlayerComponent = ({
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const timeUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const hostSyncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const consecutiveSyncsRef = useRef(0);
+  const lastKnownGoodTimeRef = useRef(0);
 
   // Load YouTube API
   useEffect(() => {
@@ -128,7 +130,11 @@ const VideoPlayerComponent = ({
       playsinline: 1,
       origin: typeof window !== 'undefined' ? window.location.origin : undefined,
       enablejsapi: 1,
-      start: 0
+      start: 0,
+      // Optimize buffering for smoother playback
+      iv_load_policy: 3, // Hide annotations
+      cc_load_policy: 0, // Hide closed captions by default
+      widget_referrer: typeof window !== 'undefined' ? window.location.href : undefined
     },
   };
 
@@ -165,7 +171,7 @@ const VideoPlayerComponent = ({
     }
   }, [currentVideo, reinitializePlayer]);
 
-  // Sync with remote state for guests
+  // Improved sync with remote state for guests - ULTRA SMOOTH
   useEffect(() => {
     if (!isReady || !playerRef.current || isHost || !currentVideo) {
       return;
@@ -180,54 +186,104 @@ const VideoPlayerComponent = ({
         const currentPlayerTime = playerRef.current.getCurrentTime();
         const playerState = playerRef.current.getPlayerState();
         const isPlayerPlaying = playerState === 1;
+        const isPlayerBuffering = playerState === 3;
+        const targetTime = videoState.currentTime;
 
-        const timeDiff = Math.abs(currentPlayerTime - videoState.currentTime);
-        const shouldSync = timeDiff > 1.0; // Increased threshold to reduce frequent syncing
+        if (targetTime === 0 || isPlayerBuffering) {
+          consecutiveSyncsRef.current = 0;
+          return;
+        }
 
-        if (shouldSync && videoState.currentTime > 0) {
-          console.log(`Syncing: player=${currentPlayerTime}s, host=${videoState.currentTime}s, diff=${timeDiff}s`);
-          isSeekingRef.current = true;
-          playerRef.current.seekTo(videoState.currentTime, true);
-          setLastSyncTime(Date.now());
+        const timeDrift = targetTime - currentPlayerTime;
+        const absDrift = Math.abs(timeDrift);
+        
+        // Update last known good position if drift is acceptable
+        if (absDrift < 0.3) {
+          lastKnownGoodTimeRef.current = currentPlayerTime;
+          consecutiveSyncsRef.current = 0;
+        }
 
-          setTimeout(() => {
-            try {
-              if (videoState.isPlaying && !isPlayerPlaying) {
-                playerRef.current.playVideo();
-              } else if (!videoState.isPlaying && isPlayerPlaying) {
-                playerRef.current.pauseVideo();
-              }
-            } catch (error) {
-              console.error('Error setting play state after sync:', error);
-            }
-            isSeekingRef.current = false;
-          }, 500);
-        } else {
-          // Just sync play/pause state if no seeking needed
-          if (videoState.isPlaying && !isPlayerPlaying && !isBuffering) {
-            playerRef.current.playVideo();
-          } else if (!videoState.isPlaying && isPlayerPlaying) {
-            playerRef.current.pauseVideo();
+        // TIER 1: Perfect sync (< 0.3s) - no action
+        if (absDrift < 0.3) {
+          playerRef.current.setPlaybackRate(1.0);
+        }
+        // TIER 2: Micro adjustment (0.3-1.5s) - very gentle rate change
+        else if (absDrift < 1.5) {
+          if (timeDrift < 0) {
+            playerRef.current.setPlaybackRate(1.08); // Slightly faster
+          } else {
+            playerRef.current.setPlaybackRate(0.97); // Slightly slower
           }
+          consecutiveSyncsRef.current = 0;
+        }
+        // TIER 3: Moderate drift (1.5-3s) - more aggressive rate
+        else if (absDrift < 3.0) {
+          if (timeDrift < 0) {
+            playerRef.current.setPlaybackRate(1.15); // Faster
+          } else {
+            playerRef.current.setPlaybackRate(0.92); // Slower
+          }
+          consecutiveSyncsRef.current++;
+        }
+        // TIER 4: Large drift (3s+) - hard sync required
+        else {
+          consecutiveSyncsRef.current++;
+          
+          // Only hard sync if drift persists for 2+ cycles OR drift is huge (>5s)
+          if (consecutiveSyncsRef.current > 1 || absDrift > 5) {
+            console.log(`🔄 Syncing: drift=${absDrift.toFixed(2)}s`);
+            isSeekingRef.current = true;
+            
+            // Predictive seek: account for network delay
+            const predictiveTime = targetTime + 0.2;
+            playerRef.current.seekTo(predictiveTime, true);
+            setLastSyncTime(Date.now());
+
+            setTimeout(() => {
+              try {
+                if (videoState.isPlaying) {
+                  playerRef.current.playVideo();
+                }
+                playerRef.current.setPlaybackRate(1.0);
+              } catch (error) {
+                console.error('Sync error:', error);
+              }
+              isSeekingRef.current = false;
+              consecutiveSyncsRef.current = 0;
+            }, 250);
+          }
+        }
+
+        // Sync play/pause state
+        if (videoState.isPlaying && !isPlayerPlaying && !isBuffering && !isPlayerBuffering) {
+          playerRef.current.playVideo();
+        } else if (!videoState.isPlaying && isPlayerPlaying) {
+          playerRef.current.pauseVideo();
+          playerRef.current.setPlaybackRate(1.0);
         }
 
         setLocalState({
           isPlaying: videoState.isPlaying,
-          currentTime: videoState.currentTime
+          currentTime: targetTime
         });
 
       } catch (error) {
-        console.error('Error syncing video:', error);
+        console.error('Sync error:', error);
       }
     };
 
     syncWithHost();
-    syncIntervalRef.current = setInterval(syncWithHost, 1000); // Reduced frequency
+    syncIntervalRef.current = setInterval(syncWithHost, 400); // Faster checks for smoother sync
 
     return () => {
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
+      }
+      if (playerRef.current) {
+        try {
+          playerRef.current.setPlaybackRate(1.0);
+        } catch (e) {}
       }
     };
   }, [videoState, isReady, isHost, currentVideo, isBuffering, cleanupIntervals]);
@@ -254,25 +310,24 @@ const VideoPlayerComponent = ({
       }
     };
 
-    timeUpdateIntervalRef.current = setInterval(updateTime, 1000);
+    timeUpdateIntervalRef.current = setInterval(updateTime, 500); // Faster updates
 
-    // Separate interval for host sync broadcasts
+    // Separate interval for host sync broadcasts - HIGH FREQUENCY
     if (isHost) {
       const hostSync = () => {
         try {
           const time = playerRef.current.getCurrentTime();
           const playerState = playerRef.current.getPlayerState();
           const isPlaying = playerState === 1;
+          const isBuffering = playerState === 3;
           
-          if (isPlaying && !isNaN(time)) {
+          if (isPlaying && !isBuffering && !isNaN(time) && time > 0) {
             onVideoStateChange(true, time, 'sync');
           }
-        } catch (error) {
-          // Player might not be ready
-        }
+        } catch (error) {}
       };
 
-      hostSyncIntervalRef.current = setInterval(hostSync, 2000); // Less frequent sync broadcasts
+      hostSyncIntervalRef.current = setInterval(hostSync, 800); // Faster broadcasts
     }
 
     return () => {
@@ -295,12 +350,16 @@ const VideoPlayerComponent = ({
     
     try {
       event.target.setVolume(volume);
-      toast.success('Video loaded successfully');
+      if (!isHost) {
+        // Preload for smoother playback
+        event.target.setPlaybackQuality('hd720');
+      }
+      toast.success('Video ready');
     } catch (error) {
       console.error('Error in onReady:', error);
       setPlayerError('Failed to initialize video');
     }
-  }, [volume]);
+  }, [volume, isHost]);
 
   const onPlay = useCallback(() => {
     setLocalState(prev => ({ ...prev, isPlaying: true }));
@@ -459,12 +518,16 @@ const VideoPlayerComponent = ({
 
   if (!currentVideo) {
     return (
-      <Card className="p-6 bg-gray-800 border-red-500/30">
-        <div className="aspect-video bg-gray-900 rounded-lg flex items-center justify-center">
+      <Card className="p-8 bg-gradient-to-br from-gray-900/95 to-gray-800/95 backdrop-blur-xl border-red-500/30 shadow-2xl">
+        <div className="aspect-video bg-gradient-to-br from-gray-900 to-black rounded-2xl flex items-center justify-center border border-red-500/20">
           <div className="text-center">
-            <Music className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-300 mb-2">No Video Playing</h3>
-            <p className="text-gray-400">Add a video to the queue to get started!</p>
+            <div className="p-6 bg-red-500/10 rounded-full w-fit mx-auto mb-6">
+              <Music className="w-20 h-20 text-red-400/50" />
+            </div>
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent mb-3">
+              No Video Playing
+            </h3>
+            <p className="text-gray-400 text-lg">Add a video to the queue to get started!</p>
           </div>
         </div>
       </Card>
@@ -474,8 +537,8 @@ const VideoPlayerComponent = ({
   const videoId = extractVideoId(currentVideo.videoId) || currentVideo.videoId;
 
   return (
-    <Card className="p-4 bg-gray-800 border-red-500/30">
-      <div className="aspect-video bg-black rounded-lg overflow-hidden relative">
+    <Card className="p-4 bg-gradient-to-br from-gray-900/95 to-gray-800/95 backdrop-blur-xl border-red-500/30 shadow-2xl">
+      <div className="aspect-video bg-black rounded-2xl overflow-hidden relative border border-red-500/20 shadow-2xl shadow-red-500/10">
         {!apiLoaded ? (
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <div className="text-center">
@@ -524,51 +587,56 @@ const VideoPlayerComponent = ({
         )}
       </div>
 
-      {/* Video Info */}
-      <div className="mt-4">
+      {/* Video Info with Gradient */}
+      <div className="mt-4 bg-gradient-to-r from-red-500/10 to-transparent rounded-xl p-4 border border-red-500/20">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex-1 min-w-0">
-            <h3 className="text-lg font-semibold text-white truncate">
+          <div className="flex-1 min-w-0 mr-4">
+            <h3 className="text-lg font-bold text-white truncate mb-1">
               {currentVideo.title}
             </h3>
-            <p className="text-sm text-gray-400">
-              Added by {currentVideo.addedBy}
+            <p className="text-sm text-gray-400 flex items-center gap-2">
+              <span>Added by</span>
+              <span className="text-red-400 font-medium">{currentVideo.addedBy}</span>
             </p>
           </div>
-          <Image
-            src={currentVideo.thumbnail}
-            alt={currentVideo.title}
-            width={640}
-            height={360}
-            className="w-16 h-12 object-cover rounded"
-            style={{ width: 'auto' }}
-          />
+          <div className="flex-shrink-0">
+            <Image
+              src={currentVideo.thumbnail}
+              alt={currentVideo.title}
+              width={120}
+              height={68}
+              className="w-[120px] h-[68px] object-cover rounded-lg border border-red-500/30 shadow-lg"
+              style={{ width: 'auto' }}
+            />
+          </div>
         </div>
 
-        {/* Progress Bar */}
+        {/* Progress Bar with Glow */}
         {duration > 0 && (
           <div className="mb-4">
             <div className="flex items-center justify-between text-sm text-gray-400 mb-2">
-              <span>{formatTime(currentTime)}</span>
-              <span>{formatTime(duration)}</span>
+              <span className="font-mono">{formatTime(currentTime)}</span>
+              <span className="font-mono">{formatTime(duration)}</span>
             </div>
-            <div className="w-full bg-gray-700 rounded-full h-2">
+            <div className="w-full bg-gray-700/50 rounded-full h-2.5 overflow-hidden border border-gray-600/30">
               <div 
-                className="bg-red-500 h-2 rounded-full transition-all duration-500"
+                className="bg-gradient-to-r from-red-500 to-red-600 h-2.5 rounded-full transition-all duration-500 shadow-lg shadow-red-500/50"
                 style={{ width: `${(currentTime / duration) * 100}%` }}
               />
             </div>
           </div>
         )}
 
-        {/* Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        {/* Controls with Better Design */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-gray-800/50 rounded-xl p-3 border border-gray-700/50">
+          {/* Left: Playback Controls */}
+          <div className="flex items-center gap-2 flex-shrink-0">
             {isHost ? (
               <Button
                 onClick={handlePlayPause}
                 disabled={!isReady || !!playerError}
-                className="bg-red-500 hover:bg-red-600"
+                className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 shadow-lg hover:shadow-red-500/30 transition-all"
+                size="sm"
               >
                 {localState.isPlaying ? (
                   <Pause className="w-4 h-4" />
@@ -577,40 +645,41 @@ const VideoPlayerComponent = ({
                 )}
               </Button>
             ) : (
-              <div className="flex items-center gap-2 text-sm text-gray-400">
-                <Users className="w-4 h-4" />
-                <span>Synced with host</span>
-                {lastSyncTime > 0 && (
-                  <span className="text-xs">
-                    (Last sync: {Math.floor((Date.now() - lastSyncTime) / 1000)}s ago)
-                  </span>
-                )}
+              <div className="flex items-center gap-2 text-sm text-gray-400 bg-gray-700/30 px-3 py-1.5 rounded-lg">
+                <div className="relative">
+                  <Users className="w-4 h-4" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                </div>
+                <span className="hidden sm:inline">Synced</span>
               </div>
             )}
             
-            <Button
-              onClick={onSkip}
-              size="sm"
-              variant="outline"
-              className="border-red-500 text-red-500 hover:bg-red-500 hover:text-white"
-            >
-              <SkipForward className="w-4 h-4 mr-1" />
-              Skip
-            </Button>
+            {isHost && (
+              <Button
+                onClick={onSkip}
+                size="sm"
+                variant="outline"
+                className="border-red-500/50 text-red-400 hover:bg-red-500 hover:text-white hover:border-red-500 transition-all"
+                disabled={!isReady || !!playerError}
+              >
+                <SkipForward className="w-4 h-4 sm:mr-1" />
+                <span className="hidden sm:inline">Skip</span>
+              </Button>
+            )}
           </div>
 
-          {/* Volume Controls */}
-          <div className="flex items-center gap-2">
+          {/* Right: Volume Controls - Responsive */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <Button
               onClick={toggleMute}
               variant="ghost"
               size="sm"
-              className="text-gray-400 hover:text-white"
+              className="text-gray-400 hover:text-white hover:bg-gray-700/50 flex-shrink-0"
             >
               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
             </Button>
             
-            <div className="w-24">
+            <div className="flex-1 min-w-0 sm:w-24 lg:w-32">
               <Slider
                 value={[isMuted ? 0 : volume]}
                 onValueChange={handleVolumeChange}
@@ -620,18 +689,30 @@ const VideoPlayerComponent = ({
               />
             </div>
             
-            <span className="text-sm text-gray-400 w-8">
-              {isMuted ? 0 : volume}
+            <span className="text-xs sm:text-sm text-gray-400 w-8 sm:w-10 text-right font-mono flex-shrink-0">
+              {isMuted ? 0 : volume}%
             </span>
           </div>
         </div>
 
-        {/* Status */}
-        <div className="mt-3 pt-3 border-t border-gray-700 text-center text-sm text-gray-400">
+        {/* Status with Modern Design */}
+        <div className="mt-3 pt-3 border-t border-red-500/20 text-center text-sm">
           {isHost ? (
-            'You are the host - you control playback'
+            <div className="flex items-center justify-center gap-2 text-yellow-400 bg-yellow-500/10 py-2 rounded-lg">
+              <Crown className="w-4 h-4 animate-pulse" />
+              <span className="font-medium">Host Controls • You manage playback and can skip videos</span>
+            </div>
           ) : (
-            `Synced with host - ${videoState.isPlaying ? 'Playing' : 'Paused'} at ${formatTime(videoState.currentTime)}`
+            <div className="space-y-1">
+              <div className="flex items-center justify-center gap-2 text-green-400 bg-green-500/10 py-2 rounded-lg">
+                <div className="relative">
+                  <Users className="w-4 h-4" />
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                </div>
+                <span>Synced • {videoState.isPlaying ? 'Playing' : 'Paused'} at {formatTime(videoState.currentTime)}</span>
+              </div>
+              <div className="text-xs text-gray-500">Only the host can skip videos</div>
+            </div>
           )}
         </div>
       </div>
