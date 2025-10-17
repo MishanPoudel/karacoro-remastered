@@ -1,0 +1,37 @@
+{
+  "name": "karaoke-party-server",
+  "version": "1.0.0",
+  "description": "Backend server for Karaoke Party application",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "socket.io": "^4.8.1",
+    "cors": "^2.8.5",
+    "helmet": "^8.1.0",
+    "dotenv": "^17.2.2",
+    "express-rate-limit": "^8.1.0",
+    "express-validator": "^7.2.1",
+    "morgan": "^1.10.1",
+    "compression": "^1.8.1",
+    "uuid": "^13.0.0",
+    "node-cron": "^4.2.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10",
+    "jest": "^30.2.0",
+    "supertest": "^7.1.4"
+  },
+  "keywords": [
+    "karaoke",
+    "websocket",
+    "express",
+    "real-time"
+  ],
+  "author": "Karaoke Party Team",
+  "license": "MIT"
+}
