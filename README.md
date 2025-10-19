@@ -1,108 +1,164 @@
-# Karaoke Party - Real-time YouTube Karaoke App
+# Karacoro — Remastered
 
-A real-time karaoke application that allows users to create rooms, search YouTube videos, and sing together in sync.
+Professional documentation for the Karacoro remastered project.
 
-## Features
+Summary
+-------
+Karacoro is a real-time karaoke web application built with Next.js (frontend) and an Express/Socket.io backend. The app supports synchronized YouTube playback, queue management, chat, and optional voice chat via WebRTC.
 
-- **Real-time synchronization** - Host controls playback, guests sync automatically
-- **YouTube integration** - Search and play any YouTube video
-- **Room management** - Create private rooms with 6-character codes
-- **Live chat** - Chat with participants during karaoke sessions
-- **Queue management** - Add videos to queue and take turns
-- **Voice chat** - WebRTC-based voice communication
-- **Volume controls** - Individual volume control for each user
-- **Environment-aware configuration** - Easy switching between production and development modes
+Key features
+------------
+- Real-time playback sync (host-controlled)
+- YouTube Data API integration (search and play)
+- Room creation and management (room codes)
+- Video queue with prioritization and voting
+- Text chat and optional voice chat (WebRTC signaling)
+- User volume and role controls
 
-## Environment Configuration
+System requirements
+-------------------
+- Node.js 20.x
+- npm >= 8
+- A YouTube Data API key for search/playback features
 
-This application features a comprehensive environment system that allows easy switching between production and development modes.
+Repository layout (high level)
+------------------------------
+- app/                     — Next.js app routes and pages
+- components/              — React components (UI, room, shared)
+- hooks/                   — Custom React hooks
+- lib/                     — Shared utilities, API wrappers, Redis helpers
+- server/                  — Express/Socket.io backend and server-only code
+- public/                  — Static assets
+- styles and config files  — tailwind.config.ts, postcss.config.js, etc.
 
-### Environment Variables
+Environment variables
+---------------------
+Place secret/runtime configuration in a `.env.local` file at the repo root. Typical variables used by the project:
 
-Create a `.env.local` file in the root directory:
+Required
+- NEXT_PUBLIC_YOUTUBE_API_KEY — YouTube Data API key (used by frontend and server)
 
-```bash
-# Required: YouTube API Key
-NEXT_PUBLIC_YOUTUBE_API_KEY=your_youtube_api_key_here
+Recommended / optional
+- NEXT_PUBLIC_SOCKET_URL — WebSocket URL for the backend (wss://...)
+- NEXT_PUBLIC_BASE_URL — Public base URL for the app
+- NEXT_PUBLIC_PRODUCTION_MODE — "true" | "false"
+- NEXT_PUBLIC_ENABLE_VOICE_CHAT — "true" | "false"
+- NEXT_PUBLIC_MOCK_APIS — "true" | "false" (for local testing)
 
-# Environment Control
-NEXT_PUBLIC_PRODUCTION_MODE=false          # Set to true for production
-NEXT_PUBLIC_FORCE_DEVELOPMENT=false       # Force dev mode even in production
-NEXT_PUBLIC_MOCK_APIS=false               # Use mocks even in production
+Example `.env.local` (copy from `.env.example` if present):
 
-# Production URLs
-NEXT_PUBLIC_SOCKET_URL=your_socket_server_url
-NEXT_PUBLIC_BASE_URL=your_app_url
-
-# Feature Flags
+```powershell
+NEXT_PUBLIC_YOUTUBE_API_KEY=YOUR_API_KEY
+NEXT_PUBLIC_SOCKET_URL=ws://localhost:3001
+NEXT_PUBLIC_BASE_URL=http://localhost:3000
+NEXT_PUBLIC_PRODUCTION_MODE=false
 NEXT_PUBLIC_ENABLE_VOICE_CHAT=true
-NEXT_PUBLIC_ENABLE_ANALYTICS=false
-NEXT_PUBLIC_ENABLE_ERROR_REPORTING=false
-
-# Debug Settings
-NEXT_PUBLIC_VERBOSE_LOGGING=false
-NEXT_PUBLIC_SHOW_MOCK_INDICATORS=true
 ```
 
-## Setup
+Local development
+-----------------
+1. Install dependencies
 
-### 1. YouTube API Configuration
-
-1. Go to [Google Cloud Console](https://console.developers.google.com/)
-2. Create a new project or select existing one
-3. Enable the **YouTube Data API v3**
-4. Create credentials (API Key)
-5. Copy your API key to `.env.local`
-
-### 2. Install Dependencies
-
-```bash
+```powershell
 npm install
 ```
 
-### 3. Run the Application
+2a. Frontend only
 
-```bash
-# Development mode (starts both frontend and backend)
+```powershell
 npm run dev
 ```
 
-This will start both the Next.js frontend (port 3000) and the Socket.io backend (port 3001) concurrently.
+2b. Backend only (server folder)
 
-## Production Deployment
-
-### Environment Setup
-```bash
-NODE_ENV=production
-NEXT_PUBLIC_PRODUCTION_MODE=true
-NEXT_PUBLIC_YOUTUBE_API_KEY=your_production_key
-NEXT_PUBLIC_SOCKET_URL=wss://your-production-server.com
-```
-
-### Build and Start
-```bash
-npm run build
+```powershell
+cd server
+npm install
 npm start
 ```
 
-## Architecture
+2c. Frontend + backend concurrently
 
-### Core Components
+```powershell
+npm run dev:all
+```
 
-- **VideoPlayer** - YouTube video playback with real-time sync
-- **VideoQueue** - Queue management with search and popular songs
-- **ChatPanel** - Real-time messaging system
-- **VoiceChat** - WebRTC voice communication
-- **UserPanel** - User management and controls
+Available npm scripts
+---------------------
+- npm run dev         — Start Next.js in development mode
+- npm run dev:server  — Start backend server from the `server/` folder
+- npm run dev:all     — Frontend and backend concurrently (concurrently)
+- npm run build       — Build Next.js app for production
+- npm start           — Start the built Next.js app
+- npm run lint        — Run ESLint
+- npm run lint:fix    — Run ESLint with --fix
+- npm run type-check  — Run TypeScript checks (tsc --noEmit)
 
-### Backend Server
+Backend details
+---------------
+- Entry: `server/index.js`
+- Socket handlers: `server/socket/socketHandlers.js` and `server/socket/voiceHandlers.js`
+- Routes: `server/routes/*` (e.g., health checks, rooms)
+- Middleware: `server/middleware/*` (CORS, rate limiting, validation, error handling)
+- Tasks: scheduled cleanup jobs in `server/tasks/`
 
-- **Express.js** server with Socket.io
-- **Room management** with automatic cleanup
-- **Rate limiting** and security features
-- **Health monitoring** and logging
-- **Voice chat signaling** for WebRTC
+Frontend details
+----------------
+- Next.js app is under `app/` (app-router). Key pages: room list (`app/rooms`), room view (`app/rooms/[roomId]`), sponsor and sponsor pages.
+- Components live in `components/` (shared UI and room-specific pieces under `components/room/`).
+- Tailwind and design tokens are configured in `tailwind.config.ts`.
 
-## License
+Testing & linting
+-----------------
+- Lint: `npm run lint` (uses Next.js ESLint config)
+- TypeScript type-check: `npm run type-check` (tsc --noEmit)
+- Tests: not present by default; add Jest/Playwright as needed
 
-MIT License - see LICENSE file for details.
+Build & deploy
+--------------
+1. Set production environment variables on your host or in deployment platform.
+2. Build the app:
+
+```powershell
+npm run build
+```
+
+3. Start in production:
+
+```powershell
+npm start
+```
+
+If deploying alongside the backend, ensure your Socket.io server is reachable from the frontend (CORS and WebSocket URL configured via `NEXT_PUBLIC_SOCKET_URL`). Consider using a process manager (PM2) or containerization.
+
+Docker
+------
+This repository includes a `Dockerfile` and `docker-compose.yml`. Use them to build and run containers for production or local debugging.
+
+Security & operational notes
+----------------------------
+- Do not commit `.env.local` or any secret keys. Add them to your CI/CD secrets manager.
+- Rate limiting and input validation exist on the server; review `server/middleware` before exposing to public traffic.
+- Enable TLS/WSS in production; set `NEXT_PUBLIC_SOCKET_URL` to a secure endpoint.
+
+Troubleshooting
+---------------
+- Build errors: run `npm run type-check` to catch TypeScript issues.
+- YouTube API errors: ensure your API key is valid and the API is enabled in Google Cloud Console.
+- Socket issues: check `NEXT_PUBLIC_SOCKET_URL`, server logs (`server/logs/`) and CORS middleware.
+
+Contributing
+------------
+- Fork the repository and create feature branches.
+- Keep PRs small and focused. Include a description and testing steps.
+- Run lint and type checks locally before opening PRs.
+
+Contact & support
+-----------------
+- For questions or issues, open a GitHub issue in this repository.
+
+License
+-------
+- MIT
+
+EOF
