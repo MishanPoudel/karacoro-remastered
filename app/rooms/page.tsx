@@ -1,10 +1,12 @@
+import MarqueeBanner from "@/components/MarqueeBanner";
 import { RoomCreator } from "@/components/room/RoomCreator";
 import { RoomJoiner } from "@/components/room/RoomJoiner";
 
 export default function Home() {
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-red-900 via-black to-red-900 text-white overflow-hidden">
+    <main className="min-h-full bg-gradient-to-br from-red-900 via-black to-red-900 text-white overflow-hidden">
+      <MarqueeBanner/>
       <section id="room-section" className="py-20 bg-black/40 backdrop-blur-sm min-h-screen flex justify-center items-center">
         <div className="container px-4 mx-auto">
           <div className="text-center mb-16">

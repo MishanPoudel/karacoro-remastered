@@ -40,6 +40,7 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
   const [addingVideoId, setAddingVideoId] = useState<string | null>(null);
   const [isSearchMock, setIsSearchMock] = useState(false);
   const [isPopularMock, setIsPopularMock] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   // Load popular karaoke songs on component mount
   useEffect(() => {
@@ -168,7 +169,8 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       }
 
       if (!response.ok) {
-        throw new Error('Search failed');
+        const errText = await response.text().catch(() => 'Search failed');
+        throw new Error(errText || 'Search failed');
       }
 
       const data = await response.json();
@@ -196,8 +198,14 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
       }
     } catch (error) {
       console.error('Search error:', error);
+      const msg = error instanceof Error ? error.message : 'Search failed. Please try again.';
       toast.error('Search failed. Please try again.');
+      // Normalize any API or JSON error message into a friendly, actionable message for users
+      const friendly = 'YouTube search is currently unavailable. Please use "Add by YouTube URL" above.';
+      setSearchError(friendly);
     } finally {
+        // clear error if search later succeeds
+        // (we intentionally keep the error until next successful search)
       setIsSearching(false);
     }
   };
@@ -396,6 +404,12 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
                     )}
                   </Button>
                 </div>
+
+                {searchError && (
+                  <div className="text-sm text-yellow-300 bg-yellow-900/10 border border-yellow-800/20 rounded-md p-3 text-right">
+                    <strong>Search unavailable:</strong> {searchError}
+                  </div>
+                )}
 
                 {isSearchMock && (
                   <div className="bg-yellow-900/30 border border-yellow-500/30 rounded-lg p-3">

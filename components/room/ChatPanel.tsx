@@ -76,6 +76,7 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
   const [message, setMessage] = useState('');
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  // ref to Radix viewport (the actual scrollable container)
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,7 +85,7 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
 
   // Auto-scroll to bottom for new messages (only if user is at bottom)
   useEffect(() => {
-    const scrollContainer = scrollAreaRef.current;
+  const scrollContainer = scrollAreaRef.current;
     if (!scrollContainer) return;
 
     const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
@@ -99,13 +100,13 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
   }, [messages]);
 
   // Detect if user has scrolled up
-  const handleScroll = useCallback(() => {
-    const scrollContainer = scrollAreaRef.current;
+  const handleScroll = useCallback((e?: React.UIEvent<HTMLDivElement>) => {
+    const scrollContainer = scrollAreaRef.current || (e && (e.target as HTMLDivElement));
     if (!scrollContainer) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainer as HTMLDivElement;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 100;
-    
+
     setShowScrollButton(!isAtBottom);
     isUserScrollingRef.current = !isAtBottom;
   }, []);
@@ -133,7 +134,7 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
     // Gentle scroll to see own message only if near bottom
     const scrollContainer = scrollAreaRef.current;
     if (scrollContainer) {
-      const { scrollTop, scrollHeight, clientHeight } = scrollContainer;
+      const { scrollTop, scrollHeight, clientHeight } = scrollContainer as HTMLDivElement;
       const isNearBottom = scrollHeight - scrollTop - clientHeight < 200;
       
       if (isNearBottom) {
@@ -212,8 +213,8 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
       <div className="flex-1 min-h-0 relative overflow-hidden lg:pt-14">
         <ScrollArea 
           className="absolute inset-0 p-3 sm:p-4" 
-          ref={scrollAreaRef}
-          onScrollCapture={handleScroll}
+          viewportRef={scrollAreaRef}
+          onScroll={handleScroll}
         >
           <div className="space-y-3 sm:space-y-4">
             {messages.length === 0 ? (
@@ -275,16 +276,16 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
             value={message}
             onChange={handleInputChange}
             onKeyPress={handleKeyPress}
-            className="flex-1 bg-gray-800/80 border-gray-600/50 text-white placeholder-gray-500 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl transition-all text-sm sm:text-base h-9 sm:h-10"
+            className="flex-1 bg-gray-800/80 border-gray-600/50 text-white placeholder-gray-500 focus:border-red-500 focus:ring-2 focus:ring-red-500/20 rounded-xl transition-all text-sm sm:text-base h-12"
             maxLength={500}
           />
           <Button
             onClick={handleSendMessage}
             disabled={!message.trim()}
-            className="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:from-gray-700 disabled:to-gray-800 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-red-500/30 hover:scale-105 px-3 sm:px-5 rounded-xl h-9 sm:h-10"
-            size="icon"
+            aria-label="Send message"
+            className="h-12 w-12 flex items-center justify-center bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-red-500/30 hover:scale-105 rounded-xl text-white"
           >
-            <Send className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <Send className="w-4 h-4 sm:w-5 sm:h-5" />
           </Button>
         </div>
         <div className="text-[10px] sm:text-xs text-gray-500 mt-1.5 sm:mt-2 flex justify-between items-center">

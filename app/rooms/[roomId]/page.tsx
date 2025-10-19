@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -23,6 +23,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { useSocket } from "@/hooks/useSocket";
 import { JoinRoomDialog } from "@/components/room/JoinRoomDialog";
+import MarqueeBanner from '@/components/MarqueeBanner';
 
 // OPTIMIZATION: Dynamic imports for heavy components to reduce initial bundle size
 const VideoPlayer = dynamic(
@@ -167,6 +168,8 @@ export default function RoomPage() {
   const [userId, setUserId] = useState<string>("");
   const [copied, setCopied] = useState(false);
   const [roomHasPassword, setRoomHasPassword] = useState(false);
+  const leftColRef = useRef<HTMLDivElement | null>(null);
+  const rightColRef = useRef<HTMLDivElement | null>(null);
 
   // Check if room is password protected
   useEffect(() => {
@@ -203,6 +206,9 @@ export default function RoomPage() {
     skipVideo,
     videoEnded,
   } = useSocket();
+
+  // Right sidebar height is intentionally controlled by CSS (see chat container's `h-[60vh]`) 
+  // and should remain fixed. Removing JS-based height syncing keeps the chat height stable.
 
   useEffect(() => {
     if (roomState.roomId && roomState.username) {
@@ -242,6 +248,10 @@ export default function RoomPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-red-900 via-black to-red-900 text-white">
       <div className="container mx-auto px-4 py-6 max-w-[1920px]">
+        {/* Sponsor Marquee Banner (Room) */}
+        <div className="mb-4">
+          <MarqueeBanner />
+        </div>
         {/* Header with Glass Effect - Enhanced Design */}
         <div className="mb-6 bg-gradient-to-br from-black/60 via-black/40 to-red-900/20 backdrop-blur-xl rounded-2xl p-3 md:p-4 border border-red-500/30 shadow-2xl shadow-red-900/20">
           {/* Mobile Layout - Clean Two-Row Design */}
@@ -450,10 +460,11 @@ export default function RoomPage() {
         </div>
 
         {/* Main Content Layout */}
-        <div className="grid lg:grid-cols-12 gap-6 overflow-hidden">
+  <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-hidden min-h-[60vh] lg:min-h-[70vh] h-full items-stretch">
           {/* Left Column - Video Player and Queue */}
-          <div className="lg:col-span-8 space-y-6 min-w-0 overflow-hidden">
-            <VideoPlayer
+          <div ref={leftColRef} className="col-span-1 lg:col-span-8 space-y-6 min-w-0 overflow-hidden flex flex-col min-h-0 h-full">
+            <div className="flex-shrink-0">
+              <VideoPlayer
               currentVideo={roomState.currentVideo}
               videoState={roomState.videoState}
               isHost={roomState.isHost}
@@ -461,8 +472,9 @@ export default function RoomPage() {
               onVideoEnd={videoEnded}
               onSkip={skipVideo}
             />
+            </div>
 
-            <div className="overflow-hidden">
+            <div className="flex-1 overflow-hidden min-h-0 max-h-[28rem] sm:max-h-[36rem] md:max-h-[48rem] lg:max-h-[56rem]">
               <VideoQueue
                 queue={roomState.queue}
                 isHost={roomState.isHost}
@@ -473,7 +485,7 @@ export default function RoomPage() {
           </div>
 
           {/* Right Sidebar - Voice Chat, Users and Chat (Desktop Only) */}
-          <div className="lg:col-span-4 space-y-6 hidden lg:block min-w-0 overflow-hidden">
+          <div ref={rightColRef} className="col-span-1 lg:col-span-4 hidden lg:flex flex-col gap-6 min-h-0 min-w-0 h-full">
             <VoiceChat
               socket={socket}
               roomId={roomId}
@@ -487,8 +499,8 @@ export default function RoomPage() {
               isHost={roomState.isHost}
             />
 
-            {/* Chat with fixed height using viewport calculations */}
-            <div className="h-[calc(100vh-32rem)] min-h-[400px] max-h-[600px]">
+            {/* Chat fills remaining sidebar height (capped) */}
+            <div className="flex-1 h-[60vh]">
               <ChatPanel
                 messages={roomState.chatHistory}
                 onSendMessage={sendChatMessage}
