@@ -67,12 +67,9 @@ export function RoomCreator({ className = '' }: RoomCreatorProps) {
 
       const roomData = await createResponse.json();
       
-      console.log('✅ Room created:', roomData); // Debug log
-      
       // Store password in sessionStorage if set
       if (password.trim()) {
         sessionStorage.setItem(`room_password_${roomId}`, password.trim());
-        console.log('🔒 Password stored for room:', roomId); // Debug log
       }
       
       toast.success(`Room "${roomData.name}" created successfully!`);
