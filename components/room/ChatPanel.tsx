@@ -210,7 +210,7 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
       </div>
 
       {/* Messages Area with Scroll Detection - Grows to fill available space */}
-      <div className="flex-1 min-h-0 relative overflow-hidden lg:pt-14">
+      <div className="flex-1 min-h-0 relative overflow-hidden">
         <ScrollArea 
           className="absolute inset-0 p-3 sm:p-4" 
           viewportRef={scrollAreaRef}
