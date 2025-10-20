@@ -73,7 +73,12 @@ export function VideoQueue({ queue, isHost, onAddToQueue, onRemoveFromQueue }: V
         setIsPopularMock(data.mock || false);
         
         if (data.mock) {
+          console.log('⚠️ Using mock popular songs (YouTube API unavailable)');
           toast.info('Using sample songs - YouTube API unavailable');
+        } else if (data.cached) {
+          console.log('✅ Popular songs loaded from cache');
+        } else {
+          console.log('🎵 Popular songs loaded fresh (cached for 24h)');
         }
       } catch (error) {
         console.error('Error loading popular songs:', error);

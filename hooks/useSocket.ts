@@ -130,10 +130,12 @@ export const useSocket = () => {
 
   // OPTIMIZATION 5: Individual memoized event handlers (fixing Rules of Hooks violation)
   const handleConnect = useCallback(() => {
+    console.log('🔌 Socket connected');
     setConnectionState(prev => ({ ...prev, connected: true, reconnecting: false, error: null }));
   }, []);
 
   const handleDisconnect = useCallback((reason: string) => {
+    console.log('❌ Socket disconnected:', reason);
     setConnectionState(prev => ({ ...prev, connected: false, error: reason }));
     
     // Auto-reconnect logic
@@ -157,6 +159,7 @@ export const useSocket = () => {
 
   // Room events
   const handleRoomJoined = useCallback((data: any) => {
+    console.log('🏠 Joined room:', data);
     setRoomInfo({
       roomId: data.roomId,
       username: data.username,

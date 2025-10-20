@@ -189,7 +189,7 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
   const quickEmojis = ['👏', '🎤', '🎵', '🔥', '❤️', '😂', '🎉', '✨'];
 
   return (
-    <Card className="flex flex-col h-full max-h-full bg-gradient-to-br from-gray-900/95 to-gray-800/95 backdrop-blur-xl border-red-500/30 shadow-2xl overflow-hidden">
+    <Card className="flex flex-col h-screen max-h-screen bg-gradient-to-br from-gray-900/95 to-gray-800/95 backdrop-blur-xl border-red-500/30 shadow-2xl overflow-hidden">
       {/* Header with Gradient - Fixed height */}
       <div className="p-3 sm:p-4 border-b border-red-500/20 shrink-0 bg-gradient-to-r from-red-500/10 to-transparent">
         <div className="flex items-center justify-between">
@@ -209,10 +209,10 @@ export function ChatPanel({ messages, onSendMessage, currentUserId }: ChatPanelP
         </div>
       </div>
 
-      {/* Messages Area with Scroll Detection - Grows to fill available space */}
-      <div className="flex-1 min-h-0 relative overflow-hidden">
+      {/* Messages Area with Scroll Detection - Fixed height with scrollable content */}
+      <div className="flex-1 min-h-0 relative">
         <ScrollArea 
-          className="absolute inset-0 p-3 sm:p-4" 
+          className="h-full p-3 sm:p-4" 
           viewportRef={scrollAreaRef}
           onScroll={handleScroll}
         >

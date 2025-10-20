@@ -33,6 +33,7 @@ export function JoinRoomDialog({ isOpen, roomId, onJoin }: JoinRoomDialogProps) 
     // Check if there's a stored password for this room (creator scenario)
     const storedPassword = sessionStorage.getItem(`room_password_${roomId}`);
     if (storedPassword) {
+      console.log('🔑 Found stored password for room creator'); // Debug log
       setPassword(storedPassword);
     }
 
@@ -42,9 +43,13 @@ export function JoinRoomDialog({ isOpen, roomId, onJoin }: JoinRoomDialogProps) 
       try {
         const response = await fetch(`/api/rooms/check?roomId=${roomId}`);
         const data = await response.json();
+        console.log('🔍 Password check result:', data); // Debug log
         if (data.exists && data.room?.hasPassword) {
+          console.log('🔒 Room is password protected'); // Debug log
           setRoomHasPassword(true);
           setShowPasswordField(true);
+        } else {
+          console.log('🔓 Room is public or doesn\'t exist yet'); // Debug log
         }
       } catch (error) {
         console.error('Error checking room password:', error);
@@ -83,6 +88,8 @@ export function JoinRoomDialog({ isOpen, roomId, onJoin }: JoinRoomDialogProps) 
         const checkData = await checkResponse.json();
         
         if (checkData.exists && checkData.room?.hasPassword) {
+          console.log('🔒 Room requires password'); // Debug log
+          
           if (!password.trim()) {
             toast.error('Please enter the room password');
             setIsJoining(false);
@@ -103,11 +110,13 @@ export function JoinRoomDialog({ isOpen, roomId, onJoin }: JoinRoomDialogProps) 
 
           if (!verifyResponse.ok) {
             const errorData = await verifyResponse.json();
+            console.log('❌ Password verification failed:', errorData); // Debug log
             toast.error(errorData.error || 'Incorrect password');
             setIsJoining(false);
             return;
           }
 
+          console.log('✅ Password verified'); // Debug log
           // Store password in sessionStorage for reconnections
           sessionStorage.setItem(`room_password_${roomId}`, password.trim());
         }
@@ -118,6 +127,7 @@ export function JoinRoomDialog({ isOpen, roomId, onJoin }: JoinRoomDialogProps) 
       // Add a small delay to show the joining state
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      console.log('✅ Joining room:', roomId); // Debug log
       onJoin(username.trim());
     } catch (error) {
       console.error('Error joining room:', error);
