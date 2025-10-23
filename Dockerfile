@@ -1,5 +1,5 @@
 # Multi-stage build for production deployment
-FROM node:18-alpine AS base
+FROM node:25.0.0-alpine AS base
 
 # Install dependencies only when needed
 FROM base AS deps
