@@ -60,7 +60,7 @@
     "@radix-ui/react-tooltip": "^1.2.8",
     "@types/node": "24.5.2",
     "@types/react": "19.1.15",
-    "@types/react-dom": "19.1.9",
+    "@types/react-dom": "19.2.0",
     "@upstash/redis": "^1.35.6",
     "autoprefixer": "10.4.21",
     "class-variance-authority": "^0.7.1",
